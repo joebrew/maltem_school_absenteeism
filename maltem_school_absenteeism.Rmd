@@ -77,6 +77,7 @@ ggplot() +
       plot.background=element_blank())
 ```
 
+Full code at https://github.com/joebrew/maltem_school_absenteeism.
 
 \newpage
 
@@ -500,10 +501,7 @@ ggplot() +
              aes(x = lng, y = lat, color = `Percent boys`, size = students))
 ```
 
-## By latrine status  
 
-
-## By school conditions
 \newpage  
 
 
@@ -568,32 +566,6 @@ for (i in 1:length(unique_schools)){
 ```{r, eval = FALSE}
 
 
-by_school <-
-  df %>%
-  group_by(date,SCHOOL_NAME) %>%
-  summarise(absent = length(which(absence)),
-            n = n(),
-            district = first(DISTRICT)) %>%
-  mutate(p = absent/ n * 100) %>%
-  mutate(district = ifelse(district == 1, 'Manhica',
-                           ifelse(district == 2, 'Magude',
-                                  NA)))
-
-ggplot(data = by_school,
-       aes(x = date, y = p, group = district,
-           color = district)) +
-  geom_point(alpha = 0.3) +
-  xlab('Date') +
-  ylab('Percent absent') +
-  ggtitle('School absenteeism: Manhica vs. Magude
-          (each dot is a school-day)
-          (lines are district average)') +
-  theme_bw() +
-  geom_line(data = by_district,
-            aes(x = date, y = p, group = district,
-                color = district),
-            size = 1.4)
-
 
 # Time map
 dates <- sort(unique(df$date))
@@ -601,6 +573,12 @@ dates <- sort(unique(df$date))
 dates <- dates[dates > '2015-05-01']
 
 for (i in 1:length(dates)){
+  file_name <- i
+  while(nchar(file_name) < 5){
+    file_name <- paste0(0, file_name)
+  }
+  file_name <- paste0('~/Desktop/temp/', file_name, '.png')
+  png(file_name)
   date <- dates[i]
   formatted_date <- format(date, '%B %d, %Y')
   sub_data <- df[df$date == date,]
@@ -624,6 +602,7 @@ for (i in 1:length(dates)){
          legend = c(5, 10, 25, 50),
          title = 'Percent absent')
   title(main = formatted_date)
-  Sys.sleep(0.1)
+  # Sys.sleep(0.1)
+  dev.off()
 }
 ```
