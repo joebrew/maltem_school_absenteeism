@@ -1,0 +1,629 @@
+
+---
+title: MALTEM school absenteeism overview
+author: 
+  - Laia Cirera
+  - Joe Brew
+  - Elisa Sicuri 
+fig_height: 2.6
+fig_width: 4
+header-includes: \usepackage{longtable}
+highlight: zenburn
+latex_engine: xelatex
+output:
+  pdf_document:
+    includes:
+      in_header: mystyle.sty
+  html_document: default
+tables: yes
+toc: yes
+---
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE, comment = NA, error= FALSE }
+# No scientific notation
+options(scipen=999)
+
+#####
+# PACKAGES
+#####
+library(dplyr)
+library(xtable)
+library(ggplot2)
+library(knitr)
+library(png)
+library(grid)
+library(extrafont)
+library(tidyr)
+library(gridExtra)
+library(maptools)
+library(rgeos)
+library(ggmap)
+
+loadfonts(device = 'postscript', quiet = TRUE)
+
+# BASIC KNITR OPTIONS
+opts_chunk$set(comment = NA, echo = FALSE, warning = FALSE, message = FALSE, error = FALSE, fig.height = 3, fig.align='center')
+options(xtable.comment = FALSE)
+```
+
+```{r, results='hide'}
+# GET THEME FOR GGPLOTS
+source('theme.R')
+# READ IN DATA
+source('read_in.R')
+```
+
+```{r, fig.align='center', fig.height = 3}
+# TITLE MAP
+ggplot() +
+  coord_map() +
+  geom_polygon(data = moz3_fortified,
+       aes(x = long, y =lat, group = group), fill = 'grey', color = 'white') +
+    geom_polygon(data = maputo_fortified,
+       aes(x = long, y =lat, group = group), fill = 'darkred', color = NA, alpha = 0.6) +
+  theme_tufte() +
+  theme(axis.ticks.length = unit(0.001, "mm")) + labs(x=NULL, y=NULL) +
+  theme(axis.line=element_blank(),
+      axis.text.x=element_blank(),
+      axis.text.y=element_blank(),
+      axis.ticks=element_blank(),
+      axis.title.x=element_blank(),
+      axis.title.y=element_blank(),
+      # legend.position="none",
+      panel.background=element_blank(),
+      panel.border=element_blank(),
+      panel.grid.major=element_blank(),
+      panel.grid.minor=element_blank(),
+      plot.background=element_blank())
+```
+
+
+\newpage
+
+
+# Introduction  
+
+This document presents a largely visual overview of intitial absenteeism data related to the MALTEM program in Magude and Manhiça, Mozambique. Note that we do not present "findings" or "results", but rather general overviews. 
+
+This report is programmed as a "dynamic document"; it can reproduced automatically with updatd data at any point in time.
+
+## Data details  
+
+```{r}
+# Get schools locations
+schools <- 
+  df %>%
+  group_by(SCHOOL_NAME) %>%
+  summarise(lat = GPS_LAT[1],
+            lng = GPS_LNG[1],
+            n = length(unique(student_id)))
+
+# Organize number of student days by school
+student_days <- 
+  df %>%
+  group_by(SCHOOL_NAME) %>%
+  summarise(n = n())
+
+```
+
+
+Data have been collected over three months on `r length(unique(df$SCHOOL_NAME))` schools, with a total of `r length(unique(df$student_id))` students. In total, `r sum(student_days$n)` unique student-days have been analyzed.
+
+```{r}
+
+# Map the schools
+g1 <- ggplot() +
+  coord_map() +
+  geom_polygon(data = maputo_fortified,
+       aes(x = long, y =lat, group = group), fill = 'white', color = 'grey') +
+  theme_tufte() +
+  theme(axis.ticks.length = unit(0.001, "mm")) + labs(x=NULL, y=NULL) +
+  theme(axis.line=element_blank(),
+      axis.text.x=element_blank(),
+      axis.text.y=element_blank(),
+      axis.ticks=element_blank(),
+      axis.title.x=element_blank(),
+      axis.title.y=element_blank(),
+      # legend.position="none",
+      panel.background=element_blank(),
+      panel.border=element_blank(),
+      panel.grid.major=element_blank(),
+      panel.grid.minor=element_blank(),
+      plot.background=element_blank()) +
+  geom_point(data = schools %>%
+               rename(Students = n),
+             aes(x = lng, y = lat, size = Students),
+             col = 'darkred', alpha = 0.3) 
+
+g2 <- 
+  ggplot(data = student_days %>% 
+           arrange(n) %>%
+           mutate(SCHOOL_NAME = gsub('ESCOLA|PRIMARIA|DO|PRIMEIRO E SEGUN|GRAU', '', SCHOOL_NAME)) %>%
+           mutate(SCHOOL_NAME = factor(SCHOOL_NAME, levels = SCHOOL_NAME)) %>%
+           filter(!is.na(SCHOOL_NAME)),
+         aes(x= SCHOOL_NAME, y = n)) +
+  geom_bar(stat = 'identity', 
+           fill = 'darkred',
+           alpha = 0.6) +
+    theme_tufte() +
+    theme(axis.text.x = element_text(angle = 90, 
+                                     hjust = 1, 
+                                     size = 6)) +
+  xlab('School name') +
+  ylab('Student-days')
+multiplot(g1, g2, cols = 2)
+```
+
+
+## By time  
+
+When we combine all schools, we can estimate the overall seasonality of absenteeism.
+
+```{r}
+by_time <- 
+  df %>% group_by(date) %>%
+  summarise(n = n(),
+            absences = length(which(absence))) %>%
+  mutate(p = absences / n * 100)
+
+ggplot(data = by_time,
+       aes(x = date, y = p)) +
+  geom_point(color = 'darkred', alpha = 0.2) +
+  geom_smooth() +
+  xlab('Date') +
+  ylab('Absenteeism rate') +
+  ggtitle('Absenteeism over time')
+```
+
+
+## By district  
+
+Generally speaking, absenteeism is slightly higher in Magude than in Manhiça:
+
+```{r}
+# Group by district
+cols <- c('blue', 'red')
+by_district <-
+  df %>%
+  group_by(date,district) %>%
+  summarise(absent = length(which(absence)),
+            n = n()) %>%
+  mutate(p = absent/ n * 100)
+by_district <- by_district[!is.na(by_district$district),]
+
+ggplot(data = by_district,
+       aes(x = date, y = p, group = district,
+           color = district)) +
+  geom_point(alpha = 0.4) +
+  geom_smooth(alpha = 0.5) +
+  geom_line(alpha = 0.5) +
+  xlab('Date') +
+  ylab('Percent absent') +
+  ggtitle('School absenteeism: Manhica vs. Magude')  +
+  scale_colour_manual(values = cols, name = 'District')
+
+```
+
+However, it is worth noting that the number of students in Magude is fewer, and therefore more subject to natural variance:
+
+```{r}
+school_time <- df %>%
+  group_by(date, district) %>%
+  summarise(n = n())
+
+ggplot(data = school_time,
+       aes(x = date, y = n, group = district, color = district)) +
+  geom_line() +
+  scale_colour_manual(values = cols, name = 'District') +
+  xlab('Date') +
+  ylab('Students') +
+  ggtitle('Number of students under observation by district/time')
+
+```
+
+If we aggregate by month, we can examine absenteeism in a slightly smoother fashion:
+
+```{r}
+by_month <- df %>%
+  group_by(district, year, month) %>%
+  summarise(n = n(),
+            absences = length(which(absence))) %>%
+  mutate(p = absences / n * 100) %>%
+  filter(!is.na(district))
+
+ggplot(data = by_month,
+       aes(x = month, y = p, group = district, color = district)) +
+  geom_line(size = 2, alpha = 0.6) +
+  xlab('Month') +
+  ylab('Percent absent') +
+  ggtitle('Student absenteeism by month') +
+  scale_colour_manual(values = cols, name = 'District')
+
+
+```
+
+\newpage 
+
+## By age  
+
+There is no clear trend between a student's age and their absenteeism rate.
+
+```{r}
+by_age <- df %>%
+  mutate(age = as.numeric((Sys.Date() - DOB) / 365.25 )) %>%
+  group_by(student_id) %>%
+  summarise(n = n(),
+            absences = length(which(absence)),
+            age = first(age)) %>%
+  mutate(p = absences / n * 100) %>%
+  filter(age > 5, age < 16)
+
+ggplot(data = by_age,
+       aes(x = age, y = p)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth() +
+  xlab('Age') +
+  ylab('Absenteeism rate') +
+  ggtitle('Student age and absenteeism')
+  
+```
+
+## By gender
+
+Generally speaking, females have lower absenteeism than males: 
+
+```{r}
+by_gender_date <- df %>%
+  group_by(gender, date) %>%
+  summarise(n = n(),
+            absences = length(which(absence))) %>%
+  mutate(p = absences / n * 100) %>%
+  ungroup() %>%
+  mutate(gender = ifelse(gender == 'Female', 'Girls', 
+                         ifelse(gender == 'Male', 'Boys', NA)))
+```
+
+```{r}
+ggplot(data = by_gender_date,
+       aes(x = date, y = p, group = gender, color = gender)) +
+  geom_line(alpha = 0.3) + 
+  geom_point(alpha = 0.3) +
+  geom_smooth() +
+  scale_colour_manual(values = cols, name = 'Gender') +
+  xlab('Date') +
+  ylab('Absenteeism rate') +
+  ggtitle('Absenteeism by gender')
+
+```
+
+
+## By school 
+
+
+```{r, eval = FALSE}
+by_school_date <- 
+  df %>%
+  group_by(SCHOOL_NAME, date) %>%
+  summarise(n = n(),
+            absences = length(which(absence))) %>%
+    mutate(p = absences / n * 100) %>%
+  ungroup %>%
+  mutate(SCHOOL_NAME = gsub('ESCOLA|PRIMARIA|DO|PRIMEIRO E SEGUN|GRAU', '', SCHOOL_NAME))
+
+cols <- rainbow(length(unique(by_school_date$SCHOOL_NAME)))
+ggplot(data = by_school_date,
+       aes(x = date, y = p, group = SCHOOL_NAME, color = SCHOOL_NAME)) +
+  geom_line(alpha = 0.5) +
+  scale_colour_manual(values = cols, name = 'School') +
+  xlab('Date') +
+  ylab('Absenteeism rate')
+
+```
+
+
+There is a surprisingly high level of variation in absenteeism by school. To assess overall absenteeism, we de-aggregate on time, and examine overall absenteeism by school.
+
+```{r, fig.height = 3.5}
+by_school <- 
+  df %>%
+  group_by(SCHOOL_NAME) %>%
+  summarise(n = n(),
+            absences = length(which(absence)),
+            lat = first(GPS_LAT),
+            lng = first(GPS_LNG)) %>%
+  mutate(p = absences / n * 100) %>% 
+  ungroup %>%
+  mutate(SCHOOL_NAME = gsub('ESCOLA|PRIMARIA|DO|PRIMEIRO E SEGUN|GRAU', '', SCHOOL_NAME)) %>%
+  filter(!is.na(SCHOOL_NAME))
+
+ggplot(data = by_school %>%
+         arrange(desc(p)) %>%
+         mutate(SCHOOL_NAME = factor(SCHOOL_NAME, levels = SCHOOL_NAME)),
+       aes(x = SCHOOL_NAME, y = p)) +
+  geom_bar(stat = 'identity', alpha = 0.6, color = 'darkred') +
+  theme(axis.text.x = element_text(angle = 90, 
+                                     hjust = 1, 
+                                     size = 6)) +
+  xlab('School') +
+  ylab('Absenteeism rate') +
+  ggtitle('Absenteeism by school')
+```
+
+## By geography
+
+```{r, fig.height = 4.5}
+# Satelite-based atlas map (for health care workers)
+if('tempmap.RData' %in% dir('/tmp')){
+  load('/tmp/tempmap.RData')
+} else {
+  temp <- get_map(location = coordinates(maputo)[1,],
+                maptype = 'satellite',
+                zoom = 8)
+  save('temp', file = '/tmp/tempmap.RData')
+}
+
+# Create a mapper (one row = one absenteeism point)
+mapper <- data.frame(lng = NA, lat = NA)
+for (i in 1:nrow(by_school)){
+  new_rows <- round(by_school$p[i])
+  new_mapper <- data.frame(lng = rep(by_school$lng[i], new_rows),
+                           lat = rep(by_school$lat[i], new_rows))
+  mapper <- rbind(mapper, new_mapper)
+}
+
+# Kernel density surfaces
+ggmap(temp) +
+    # ylim(-25.5, -24.5) +
+    coord_cartesian() +
+  stat_density2d(data = mapper,
+                 aes(x = lng,
+                     y = lat,
+                     fill = ..level..),
+                 geom = 'polygon') +
+                 # colour = class,
+                 # bins = 30,
+            # facet_wrap(~localidade, nrow = 2) +
+  scale_fill_gradient(low = 'darkorange',
+                      high = 'darkblue',
+                      guide = guide_legend(reverse=TRUE), 
+                      name = 'Absenteeism index') +
+  xlab('Longitude') +
+  ylab('Latitude') +
+  ggtitle('Absenteeism by space')
+```
+
+## By lunch status  
+
+```{r}
+by_lunch_school <- df %>%
+  group_by(SCHOOL_NAME) %>%
+  summarise(lunch = first(LUNCH[!is.na(LUNCH)]),
+            lng = first(GPS_LNG),
+            lat = first(GPS_LAT)) 
+by_lunch <- by_lunch_school %>%
+  group_by(lunch) %>% tally %>%
+  mutate(lunch = ifelse(lunch == TRUE, 'Offers free lunch', 
+                        'Does not offer free lunch'))
+
+ggplot(data = by_lunch, 
+       aes(x = lunch, y = n)) +
+  geom_bar(stat = 'identity', color = 'darkred', alpha = 0.6) +
+  xlab('Lunch status') +
+  ylab('Schools') +
+  ggtitle('Distribution of schools offering free lunch')
+```
+
+Geographically, the fews schools not offering free lunch are clustered together
+
+```{r}
+ggplot() +
+  coord_map() +
+  geom_polygon(data = maputo_fortified,
+       aes(x = long, y =lat, group = group), fill = 'white', color = 'grey') +
+  theme_tufte() +
+  theme(axis.ticks.length = unit(0.001, "mm")) + labs(x=NULL, y=NULL) +
+  theme(axis.line=element_blank(),
+      axis.text.x=element_blank(),
+      axis.text.y=element_blank(),
+      axis.ticks=element_blank(),
+      axis.title.x=element_blank(),
+      axis.title.y=element_blank(),
+      # legend.position="none",
+      panel.background=element_blank(),
+      panel.border=element_blank(),
+      panel.grid.major=element_blank(),
+      panel.grid.minor=element_blank(),
+      plot.background=element_blank()) +
+  geom_point(data = by_lunch_school %>% filter(!is.na(lunch)) %>%
+                 mutate(lunch = ifelse(lunch == TRUE, 'Offers free lunch', 
+                        'Does not offer free lunch')),
+             aes(x = lng, y = lat, color = lunch),
+             alpha = 0.6)
+
+```
+
+## By day of the week
+
+```{r}
+temp <- df
+temp$dow <- weekdays(temp$date)
+by_day <- temp %>%
+  group_by(dow) %>%
+  summarise(absences = length(which(absence)),
+            n = n()) %>%
+  mutate(p = absences / n * 100) %>%
+  mutate(dow = factor(dow, levels = c('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'))) 
+orderer <- data.frame(dow = c('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'),
+                     order = 1:5)
+by_day <- 
+  by_day %>% left_join(orderer) 
+by_day$dow <- factor(by_day$dow, levels = by_day$dow)
+
+ggplot(data = by_day,
+       aes(x = dow, y = p)) +
+  geom_bar(stat = 'identity') +
+  xlab('Day') +
+  ylab('Absenteeism rate') +
+  ggtitle('Absenteeism by day of week')
+```
+
+## Geographical distribution of boys and girls
+
+```{r}
+bg <- df %>%
+  group_by(SCHOOL_NAME) %>%
+  summarise(boys = length(unique(student_id[gender == 'Male'])),
+            girls = length(unique(student_id[gender == 'Female'])),
+            students = length(unique(student_id)),
+            lat = first(GPS_LAT),
+            lng = first(GPS_LNG)) %>%
+  mutate(`Percent boys` = boys / students * 100)
+ggplot() +
+  coord_map() +
+  geom_polygon(data = maputo_fortified,
+       aes(x = long, y =lat, group = group), fill = 'white', color = 'grey') +
+  theme_tufte() +
+  theme(axis.ticks.length = unit(0.001, "mm")) + labs(x=NULL, y=NULL) +
+  theme(axis.line=element_blank(),
+      axis.text.x=element_blank(),
+      axis.text.y=element_blank(),
+      axis.ticks=element_blank(),
+      axis.title.x=element_blank(),
+      axis.title.y=element_blank(),
+      # legend.position="none",
+      panel.background=element_blank(),
+      panel.border=element_blank(),
+      panel.grid.major=element_blank(),
+      panel.grid.minor=element_blank(),
+      plot.background=element_blank()) +
+  geom_point(data = bg,
+             aes(x = lng, y = lat, color = `Percent boys`, size = students))
+```
+
+## By latrine status  
+
+
+## By school conditions
+\newpage  
+
+
+# Appendix  
+
+## School-specific absenteeism charts   
+
+```{r, fig.height = 8.5}
+# Plot schools
+unique_schools <- unique(df$SCHOOL_NAME)
+unique_schools <- unique_schools[!is.na(unique_schools)]
+
+for (i in 1:length(unique_schools)){
+  # Isolate school in question
+  school <- unique_schools[i]
+  # Subset data
+  sub_df <- df[df$SCHOOL_NAME == unique_schools[i],]
+  # Group by day and get absenteeism
+  sub_df_grouped <- 
+    sub_df %>%
+    group_by(date) %>%
+    summarise(absent = length(which(absence)),
+              n = n()) %>%
+    mutate(p = absent/ n * 100)
+  
+  # Get gathered df
+  sub_df_gathered <- 
+    gather(sub_df_grouped,
+           key,
+           value, 
+           absent:p)
+  cols <- c('darkgrey', 'darkred')
+  g1 <- 
+    ggplot() +
+    geom_area(data = sub_df_gathered %>%
+                filter(key %in% c('n', 'absent')) %>%
+                mutate(key = ifelse(key == 'n', 'Eligible student-days', 
+                                    ifelse(key == 'absent', 'Student absences',
+                                           key))),
+              aes(x = date, y = value, group = key, fill = key),
+              alpha = 0.6) +
+    xlab('Date') +
+    ylab('Students') +
+    ggtitle(unique_schools[i])  +
+     scale_fill_manual(name="",values=cols)
+
+  
+  g2 <- 
+    ggplot(data = sub_df_grouped,
+           aes(x = date, y = p)) +
+    geom_line(alpha = 0.3) +
+    geom_point(alpha = 0.6) +
+    geom_smooth() +
+    ylim(0,100) +
+    xlab('Date') +
+    ylab('Percent absent')
+  
+  multiplot(g1, g2)
+}
+```
+
+```{r, eval = FALSE}
+
+
+by_school <-
+  df %>%
+  group_by(date,SCHOOL_NAME) %>%
+  summarise(absent = length(which(absence)),
+            n = n(),
+            district = first(DISTRICT)) %>%
+  mutate(p = absent/ n * 100) %>%
+  mutate(district = ifelse(district == 1, 'Manhica',
+                           ifelse(district == 2, 'Magude',
+                                  NA)))
+
+ggplot(data = by_school,
+       aes(x = date, y = p, group = district,
+           color = district)) +
+  geom_point(alpha = 0.3) +
+  xlab('Date') +
+  ylab('Percent absent') +
+  ggtitle('School absenteeism: Manhica vs. Magude
+          (each dot is a school-day)
+          (lines are district average)') +
+  theme_bw() +
+  geom_line(data = by_district,
+            aes(x = date, y = p, group = district,
+                color = district),
+            size = 1.4)
+
+
+# Time map
+dates <- sort(unique(df$date))
+# start in may
+dates <- dates[dates > '2015-05-01']
+
+for (i in 1:length(dates)){
+  date <- dates[i]
+  formatted_date <- format(date, '%B %d, %Y')
+  sub_data <- df[df$date == date,]
+  sub_data_grouped <- sub_data %>%
+    group_by(SCHOOL_NAME) %>%
+    summarise(lat = first(GPS_LAT),
+              lng = first(GPS_LNG),
+              n = n(),
+              a = length(which(absence))) %>%
+    mutate(p = a / n * 100)
+  plot(maputo)
+  points(sub_data_grouped$lng,
+         sub_data_grouped$lat,
+         cex = sub_data_grouped$p / 10,
+         pch = 16,
+         col = adjustcolor('darkred', alpha.f = 0.6))
+  legend('left',
+         pch = 16,
+         col = adjustcolor('darkred', alpha.f = 0.6),
+         pt.cex = c(5, 10, 25, 50)/ 10,
+         legend = c(5, 10, 25, 50),
+         title = 'Percent absent')
+  title(main = formatted_date)
+  Sys.sleep(0.1)
+}
+```
