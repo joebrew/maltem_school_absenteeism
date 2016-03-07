@@ -271,7 +271,44 @@ ggplot(data = by_age,
 
 ## By gender
 
+There are slightly more male students than females:
+
+```{r}
+by_gender <- df %>%
+  group_by(gender) %>%
+  summarise(n = length(unique(student_id)))
+
+ggplot(data = by_gender,
+       aes(x = gender, y = n)) +
+  geom_bar(stat = 'identity') +
+  xlab('Gender') +
+  ylab('Students') +
+  ggtitle('Number of students by gender') +
+  geom_label(aes(label = n))
+
+```
+
 Generally speaking, females have lower absenteeism than males: 
+
+
+```{r}
+by_gender <- df %>%
+  group_by(gender) %>%
+  summarise(students = length(unique(student_id)),
+            absences = length(which(absence)),
+            n = n()) %>%
+  mutate(p = absences / n * 100)
+
+ggplot(data = by_gender,
+       aes(x = gender, y = p)) +
+  geom_bar(stat = 'identity') +
+  xlab('Gender') +
+  ylab('Absenteeism rate') +
+  ggtitle('Absenteeism rate by gender') +
+  geom_label(aes(label = paste0(round(p, digits = 2), '%')))
+
+```
+
 
 ```{r}
 by_gender_date <- df %>%
