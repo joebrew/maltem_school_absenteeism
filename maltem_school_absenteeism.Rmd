@@ -269,6 +269,28 @@ ggplot(data = by_age,
   
 ```
 
+
+
+## By district
+
+Below is the breakdown of students by Magude and Manhiça:
+
+```{r}
+by_district <- df %>%
+  group_by(district) %>%
+  summarise(n = length(unique(student_id)))
+
+ggplot(data = by_district,
+       aes(x = district, y = n)) +
+  geom_bar(stat = 'identity') +
+  xlab('district') +
+  ylab('Students') +
+  ggtitle('Number of students by district') +
+  geom_label(aes(label = n))
+
+```
+
+
 ## By gender
 
 There are slightly more male students than females:
