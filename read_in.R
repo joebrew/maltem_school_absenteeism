@@ -519,3 +519,12 @@ if('cleaned_data.RData' %in% dir()){
   moz3_fortified <- fortify(moz3, region = 'NAME_3')
   save.image('cleaned_data.RData')
 }
+
+
+# Write spreadsheets for laia (requested on 2016-04-13)
+if(!dir.exists('~/Desktop/magude')){
+  dir.create('~/Desktop/magude')
+}
+setwd('~/Desktop/magude')
+library(readr)
+write_csv(df, 'magude_student_absences_and_presences.csv')
