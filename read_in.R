@@ -543,6 +543,59 @@ laia <- laia %>%
               rename(student_id = `_URI`) %>%
               dplyr::select(student_id, NAME),
             by = 'student_id')
-
-
 write_csv(df, 'magude_student_absences_and_presences.csv')
+
+# Also at laias request (2016-04-22),
+# Create separate rosters for each school
+
+if(!dir.exists('~/Desktop/magude/schools')){
+  dir.create('~/Desktop/magude/schools')
+}
+setwd('~/Desktop/magude/schools')
+
+# Create a simplified students dataframe
+students <-
+  laia[!duplicated(laia$student_id),] %>%
+  # dplyr::select(-date,-student_id, -PERMID,
+  #               -CLASS_UUID, -SCHOOL_UUID,
+  #               -year, -month, -day) %>%
+  dplyr::select(district,
+                SCHOOL_NAME,
+                NAME,
+                gender,
+                GRADE,
+                CLASS_NAME,
+                DOB)
+# Order by district, schoolname
+students <-
+  students %>%
+  arrange(district, SCHOOL_NAME, GRADE, CLASS_NAME, NAME)
+
+# Give district numbers, school numbers and student numbers
+students <-
+  students %>%
+  # district number
+  mutate(district_number = ifelse(district == 'Magude', 2, 
+                                  ifelse(district == 'Manhiça', 1,
+                                         NA))) %>%
+  # school number
+  mutate(school_number = as.numeric(factor(SCHOOL_NAME))) %>%
+  # student number
+  group_by(SCHOOL_NAME) %>%
+  mutate(student_number = 1:n()) %>%
+  ungroup %>%
+  # combined number
+  mutate(combined_number = paste0(district_number, '-',
+                                  school_number, '-',
+                                  student_number))
+
+# Write csv
+for (school in sort(unique(students$SCHOOL_NAME))){
+  print(school)
+  sub_data <- students[students$SCHOOL_NAME == school,]
+  dataframe_name <-
+    paste0(school, '_', sub_data$school_number[1], '.csv')
+  write_csv(sub_data, dataframe_name)
+}
+
+
