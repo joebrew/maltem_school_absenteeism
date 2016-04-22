@@ -565,7 +565,8 @@ students <-
                 gender,
                 GRADE,
                 CLASS_NAME,
-                DOB)
+                DOB,
+                PERMID)
 # Order by district, schoolname
 students <-
   students %>%
@@ -583,7 +584,23 @@ students <-
   # student number
   group_by(SCHOOL_NAME) %>%
   mutate(student_number = 1:n()) %>%
-  ungroup %>%
+  ungroup 
+
+# Add 0s to numbers if needed
+pre_zero <- function(var, n = 2){
+  var <- as.character(var)
+  for(i in 1:length(var)){
+    while(nchar(var[i]) < n){
+      var[i] <- paste0('0', var[i])
+    }
+  }
+  return(var)
+}
+students <-
+  students %>%
+  mutate(district_number = pre_zero(district_number),
+         school_number = pre_zero(school_number),
+         student_number = pre_zero(student_number, n = 3)) %>%
   # combined number
   mutate(combined_number = paste0(district_number, '-',
                                   school_number, '-',
