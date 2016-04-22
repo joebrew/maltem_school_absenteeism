@@ -18,6 +18,7 @@ library(readxl)
 library(raster)
 library(maptools)
 library(rgeos)
+library(readr)
 source('helpers.R')
 
 if('cleaned_data.RData' %in% dir()){
@@ -28,7 +29,11 @@ if('cleaned_data.RData' %in% dir()){
   read_data <- function(file_name = 'Form A core.xlsx'){
     message(paste0('Reading and cleaning ', file_name))
     # Read in the data
-    temp <- read_excel(paste0('data/', file_name))
+    if(grepl('.xlsx', file_name)){
+      temp <- read_excel(paste0('data/', file_name))
+    } else {
+      temp <- read_csv(paste0('data/', file_name))
+    }
     # Remove empty rows
     bad_rows <- rep(FALSE, nrow(temp))
     for (row in 1:nrow(temp)){
@@ -45,11 +50,10 @@ if('cleaned_data.RData' %in% dir()){
     temp$bad_row <- NULL
     # Assign to an appropriate name
     object_name <- 
-      gsub(' ', '_', gsub('.xlsx', '', tolower(file_name)))
+      gsub(' ', '_', gsub('.xlsx|.csv', '', tolower(file_name)))
     assign(object_name,
            temp,
            envir = .GlobalEnv)
-    
   }
   
   # Loop through all the data, reading it in
@@ -57,7 +61,6 @@ if('cleaned_data.RData' %in% dir()){
   for (i in 1:length(data_files)){
     read_data(data_files[i])
   }
-  
   
   ##### Go through each file, keeping only 
   # the necessary columns, and joining together
@@ -73,12 +76,25 @@ if('cleaned_data.RData' %in% dir()){
                   TYPE_OF_LATRINE,
                   SCHOOL_CONDITIONS,
                   SCHOOL_NAME,
-                  `valid schools`,
+                  # `valid schools`,
                   GPS_LAT,
                   GPS_LNG,
                   LUNCH,
                   NUMBER_OF_CLASSES)
+  # Read in the valid schools info
+  # to standardize school names
+  valid_schools <- read_excel('misc/School names.xlsx')
   
+  # Fix names
+  form_a_core <- 
+    form_a_core %>%
+    left_join(valid_schools %>%
+                dplyr::select(`School names…`,
+                              `Correct name`),
+              by = c('SCHOOL_NAME' = 'School names…')) %>%
+    mutate(SCHOOL_NAME = `Correct name`) %>%
+    dplyr::select(-`Correct name`)
+
   # Narrow down form B core: turmas
   form_b_core <-
     form_b_core %>%
@@ -144,7 +160,7 @@ if('cleaned_data.RData' %in% dir()){
            SECOND_MONTH_OF_REFERENCE = add_zero(SECOND_MONTH_OF_REFERENCE),
            THIRD_MONTH_OF_REFERENCE = add_zero(THIRD_MONTH_OF_REFERENCE),
            day = add_zero(day))
-  # rename the buggy january as september
+  # rename the buggy january as september (laias instructions)
   temp$THIRD_MONTH_OF_REFERENCE[temp$THIRD_MONTH_OF_REFERENCE == '01'] <- '09'
   
   # Divide temp into 3 months, and create dates
@@ -190,8 +206,8 @@ if('cleaned_data.RData' %in% dir()){
                   CLASS_UUID,
                   DOB,
                   HOUSEHOLD_NUMBER,
-                  GENDER,
-                  SCHOOL_NAME)#,
+                  GENDER)#,
+                  # SCHOOL_NAME)#,
   #                 ABSENCE_FIRST_MONTH,
   #                 ABSENCE_SECOND_MONTH,
   #                 ABSENCE_THIRD_MONTH)
@@ -223,7 +239,6 @@ if('cleaned_data.RData' %in% dir()){
     rbind(form_c_days_first,
           form_c_days_second,
           form_c_days_third)
-  
   
   # Get real dates into absences !!!
   temp <- absences %>%
@@ -370,38 +385,21 @@ if('cleaned_data.RData' %in% dir()){
     mutate(absence = ifelse(is.na(absence), FALSE, absence))
   
   # Bring in full school information
-  
-  # (first, get a the valid.schools for each main school)
-  df <- df %>% 
-    left_join(form_a_core %>%
-                dplyr::select(SCHOOL_UUID,
-                              `valid schools`), 
-              by = 'SCHOOL_UUID') 
-  # (next, remove the extra rows from form_a_core and bring 
-  # in simplified/standardized information into df)
-  
-  # !!! what's going on with valid schools number 212?
-  # unique(schools_simple$`valid schools`)
-  
-  schools_simple <- form_a_core[,c('SCHOOL_UUID', 'SCHOOL_NAME', 'valid schools')]
-  # standardize names
-  valid_schools <- unique(sort(schools_simple$`valid schools`))
-  for (i in valid_schools){
-    schools_simple$SCHOOL_NAME[schools_simple$`valid schools` == i] <- 
-      schools_simple$SCHOOL_NAME[schools_simple$`valid schools` == i][1]
-  }
-  schools_simple$`valid schools` <- NULL
-  
-  # Put the standardized school name into form_a_core 
-  form_a_core <- 
-    form_a_core %>% 
-    dplyr::select(-SCHOOL_NAME) %>%
-    left_join(schools_simple, by = 'SCHOOL_UUID')
-  # Bring all school data into df
   df <- 
     df %>%
     left_join(form_a_core %>%
-                dplyr::select(-`valid schools`), by = 'SCHOOL_UUID')
+                dplyr::select(SCHOOL_UUID, 
+                              SCHOOL_NAME,
+                              GPS_ALT,
+                              GPS_ACC,
+                              GPS_LNG,
+                              GPS_LAT,
+                              DISTRICT,
+                              TYPE_OF_LATRINE,
+                              SCHOOL_CONDITIONS,
+                              LUNCH,
+                              NUMBER_OF_CLASSES),
+              by = 'SCHOOL_UUID')
   
   # Now data is structured : 1 row = 1 student-day, flagged for absence or not
   
@@ -419,7 +417,8 @@ if('cleaned_data.RData' %in% dir()){
   df$GPS_ALT <- df$GPS_ACC <- NULL
   
   # DOB
-  df$DOB <- as.Date(df$DOB)
+  df$DOB <- as.Date(substr(df$DOB, 1, 10),
+                    format = '%d%b%Y')
   
   # Clean out some extra columns
   df$`valid schools` <- NULL
@@ -456,58 +455,56 @@ if('cleaned_data.RData' %in% dir()){
                   ifelse(df$TYPE_OF_LATRINE == 3, 'Latrina tradicional melhorada',
                          ifelse(df$TYPE_OF_LATRINE == 4, 'Latrina tradicional não melhorada',
                                 ifelse(df$TYPE_OF_LATRINE == 5, 'Sem latrina', NA)))))
-   
-  
   
   # Clean up lunch # 
   df$LUNCH <- ifelse(df$LUNCH == 1, TRUE, 
                      ifelse(df$LUNCH == 2, FALSE, 
                             NA))
   
-  # Get the posto for each school only for Magude
-  postos <- 
-    df %>%
-    group_by(SCHOOL_NAME) %>%
-    summarise(DISTRICT = first(district)) %>%
-    mutate(posto = NA,
-           prevalencia = NA) %>%
-    filter(DISTRICT == 'Magude')
-  
-  postos$posto[postos$SCHOOL_NAME == 'EPC DE BOBI'] <- 'Sede'
-  postos$prevalencia[postos$SCHOOL_NAME == 'EPC DE BOBI']  <- 10
-  
-  postos$posto[postos$SCHOOL_NAME == 'EPC DE DUCO'] <- 'Sede'
-  postos$prevalencia[postos$SCHOOL_NAME == 'EPC DE DUCO']  <- 10
-  
-  postos$posto[postos$SCHOOL_NAME == 'EPC DE MAGUIGUANA'] <- 'Sede'
-  postos$prevalencia[postos$SCHOOL_NAME == 'EPC DE MAGUIGUANA']  <- 10
-  
-  postos$posto[postos$SCHOOL_NAME == 'EPC DE MAWANDLA'] <- 'Sede'
-  postos$prevalencia[postos$SCHOOL_NAME == 'EPC DE MAWANDLA']  <- 10
-  
-  postos$posto[postos$SCHOOL_NAME == 'EPC DE MOINE'] <- 'Sede'
-  postos$prevalencia[postos$SCHOOL_NAME == 'EPC DE MOINE']  <- 10
-  
-  postos$posto[postos$SCHOOL_NAME == 'EPC DE MOTAZE'] <- 'Motaze'
-  postos$prevalencia[postos$SCHOOL_NAME == 'EPC DE MOTAZE']  <- 8
-  
-  postos$posto[postos$SCHOOL_NAME == 'EPC DE NWAMBYANA'] <- 'Motaze'
-  postos$prevalencia[postos$SCHOOL_NAME == 'EPC DE NWAMBYANA']  <- 8
-  
-  postos$posto[postos$SCHOOL_NAME == 'EPC DE PANJANE'] <- 'Panjane'
-  postos$prevalencia[postos$SCHOOL_NAME == 'EPC DE PANJANE']  <- 10
-  
-  postos$posto[postos$SCHOOL_NAME == 'EPC DE SIMBE'] <- 'Sede'
-  postos$prevalencia[postos$SCHOOL_NAME == 'EPC DE SIMBE']  <- 10
-  
-  postos$posto[postos$SCHOOL_NAME == 'ESCOLA PRIMARIA CONPLENTA  DE MAGUDE'] <- 'Sede'
-  postos$prevalencia[postos$SCHOOL_NAME == 'ESCOLA PRIMARIA CONPLENTA  DE MAGUDE']  <- 10
-  
-  postos$posto[postos$SCHOOL_NAME == 'ESCOLA PRIMARIA DO 1 GRAU DE NHIWANE'] <- 'Panjane'
-  postos$prevalencia[postos$SCHOOL_NAME == 'ESCOLA PRIMARIA DO 1 GRAU DE NHIWANE']  <- 10
-  
-  postos$posto[postos$SCHOOL_NAME == 'ESCOLA PRIMARIA PRIMEIRO E SEGUNDO GRAU GRACA MACHEL'] <- 'Sede'
-  postos$prevalencia[postos$SCHOOL_NAME == 'ESCOLA PRIMARIA PRIMEIRO E SEGUNDO GRAU GRACA MACHEL']  <- 10
+  # # Get the posto for each school only for Magude
+  # postos <- 
+  #   df %>%
+  #   group_by(SCHOOL_NAME) %>%
+  #   summarise(DISTRICT = first(district)) %>%
+  #   mutate(posto = NA,
+  #          prevalencia = NA) %>%
+  #   filter(DISTRICT == 'Magude')
+  # 
+  # postos$posto[postos$SCHOOL_NAME == 'EPC DE BOBI'] <- 'Sede'
+  # postos$prevalencia[postos$SCHOOL_NAME == 'EPC DE BOBI']  <- 10
+  # 
+  # postos$posto[postos$SCHOOL_NAME == 'EPC DE DUCO'] <- 'Sede'
+  # postos$prevalencia[postos$SCHOOL_NAME == 'EPC DE DUCO']  <- 10
+  # 
+  # postos$posto[postos$SCHOOL_NAME == 'EPC DE MAGUIGUANA'] <- 'Sede'
+  # postos$prevalencia[postos$SCHOOL_NAME == 'EPC DE MAGUIGUANA']  <- 10
+  # 
+  # postos$posto[postos$SCHOOL_NAME == 'EPC DE MAWANDLA'] <- 'Sede'
+  # postos$prevalencia[postos$SCHOOL_NAME == 'EPC DE MAWANDLA']  <- 10
+  # 
+  # postos$posto[postos$SCHOOL_NAME == 'EPC DE MOINE'] <- 'Sede'
+  # postos$prevalencia[postos$SCHOOL_NAME == 'EPC DE MOINE']  <- 10
+  # 
+  # postos$posto[postos$SCHOOL_NAME == 'EPC DE MOTAZE'] <- 'Motaze'
+  # postos$prevalencia[postos$SCHOOL_NAME == 'EPC DE MOTAZE']  <- 8
+  # 
+  # postos$posto[postos$SCHOOL_NAME == 'EPC DE NWAMBYANA'] <- 'Motaze'
+  # postos$prevalencia[postos$SCHOOL_NAME == 'EPC DE NWAMBYANA']  <- 8
+  # 
+  # postos$posto[postos$SCHOOL_NAME == 'EPC DE PANJANE'] <- 'Panjane'
+  # postos$prevalencia[postos$SCHOOL_NAME == 'EPC DE PANJANE']  <- 10
+  # 
+  # postos$posto[postos$SCHOOL_NAME == 'EPC DE SIMBE'] <- 'Sede'
+  # postos$prevalencia[postos$SCHOOL_NAME == 'EPC DE SIMBE']  <- 10
+  # 
+  # postos$posto[postos$SCHOOL_NAME == 'ESCOLA PRIMARIA CONPLENTA  DE MAGUDE'] <- 'Sede'
+  # postos$prevalencia[postos$SCHOOL_NAME == 'ESCOLA PRIMARIA CONPLENTA  DE MAGUDE']  <- 10
+  # 
+  # postos$posto[postos$SCHOOL_NAME == 'ESCOLA PRIMARIA DO 1 GRAU DE NHIWANE'] <- 'Panjane'
+  # postos$prevalencia[postos$SCHOOL_NAME == 'ESCOLA PRIMARIA DO 1 GRAU DE NHIWANE']  <- 10
+  # 
+  # postos$posto[postos$SCHOOL_NAME == 'ESCOLA PRIMARIA PRIMEIRO E SEGUNDO GRAU GRACA MACHEL'] <- 'Sede'
+  # postos$prevalencia[postos$SCHOOL_NAME == 'ESCOLA PRIMARIA PRIMEIRO E SEGUNDO GRAU GRACA MACHEL']  <- 10
   
   #####
   # GET SPATIAL DATA
@@ -518,6 +515,9 @@ if('cleaned_data.RData' %in% dir()){
   # Fortify moz3
   moz3_fortified <- fortify(moz3, region = 'NAME_3')
   save.image('cleaned_data.RData')
+  
+  # ISSUE: THERE ARE SOME NA SCHOOLS:
+  # NEED TO BE FILLED IN AND DISCOVERED WHY THEY GOT THAT WAY
 }
 
 
@@ -543,7 +543,27 @@ laia <- laia %>%
               rename(student_id = `_URI`) %>%
               dplyr::select(student_id, NAME),
             by = 'student_id')
-write_csv(df, 'magude_student_absences_and_presences.csv')
+
+# Get months of reference
+laia <- laia %>%
+  left_join(form_b_core %>%
+              dplyr::select(SCHOOL_UUID, 
+                            FIRST_MONTH_OF_REFERENCE,
+                            SECOND_MONTH_OF_REFERENCE,
+                            THIRD_MONTH_OF_REFERENCE),
+            by = 'SCHOOL_UUID') %>%
+  # also get household number
+  left_join(form_c_core %>%
+              dplyr::select(`_URI`,
+                            HOUSEHOLD_NUMBER),
+            by = c('student_id' = '_URI'))
+
+# Remove those (159) students with no school name
+laia <-
+  laia %>%
+  filter(!is.na(SCHOOL_NAME))
+
+write_csv(laia, 'magude_student_absences_and_presences.csv')
 
 # Also at laias request (2016-04-22),
 # Create separate rosters for each school
@@ -555,7 +575,10 @@ setwd('~/Desktop/magude/schools')
 
 # Create a simplified students dataframe
 students <-
-  laia[!duplicated(laia$student_id),] %>%
+  laia %>%
+  mutate(no_school_name = is.na(SCHOOL_NAME)) %>%
+  arrange(no_school_name) %>%
+  filter(!duplicated(student_id)) %>%
   # dplyr::select(-date,-student_id, -PERMID,
   #               -CLASS_UUID, -SCHOOL_UUID,
   #               -year, -month, -day) %>%
@@ -596,6 +619,7 @@ pre_zero <- function(var, n = 2){
   }
   return(var)
 }
+
 students <-
   students %>%
   mutate(district_number = pre_zero(district_number),
@@ -611,7 +635,12 @@ for (school in sort(unique(students$SCHOOL_NAME))){
   print(school)
   sub_data <- students[students$SCHOOL_NAME == school,]
   dataframe_name <-
-    paste0(school, '_', sub_data$school_number[1], '.csv')
+    paste0(sub_data$district_number[1],
+           '-',
+           sub_data$school_number[1], 
+           '-', 
+           school, 
+           '.csv')
   write_csv(sub_data, dataframe_name)
 }
 
