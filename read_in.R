@@ -527,4 +527,22 @@ if(!dir.exists('~/Desktop/magude')){
 }
 setwd('~/Desktop/magude')
 library(readr)
+
+# At laias request (2016-04-22), write a csv
+# of df (the complete dataframe)
+# also containing
+# -nom escola
+# -nom complet estudiant
+# -data nascimento
+
+laia <- df
+
+# Get nom complet estudiant
+laia <- laia %>%
+  left_join(form_c_core %>%
+              rename(student_id = `_URI`) %>%
+              dplyr::select(student_id, NAME),
+            by = 'student_id')
+
+
 write_csv(df, 'magude_student_absences_and_presences.csv')
