@@ -32,7 +32,15 @@ if('cleaned_data.RData' %in% dir()){
     if(grepl('.xlsx', file_name)){
       temp <- read_excel(paste0('data/', file_name))
     } else {
-      temp <- read_csv(paste0('data/', file_name))
+      if(file_name == 'Form D directed.csv'){
+        # fix weird issue with character being converted to numeric
+        temp <- read_csv(paste0('data/', file_name))
+        class_column <- read.csv(paste0('data/', file_name))
+        temp$CLASS <- as.character(class_column$CLASS)
+        rm(class_column)
+      } else {
+        temp <- read_csv(paste0('data/', file_name))
+      }
     }
     # Remove empty rows
     bad_rows <- rep(FALSE, nrow(temp))
@@ -94,7 +102,7 @@ if('cleaned_data.RData' %in% dir()){
               by = c('SCHOOL_NAME' = 'School names…')) %>%
     mutate(SCHOOL_NAME = `Correct name`) %>%
     dplyr::select(-`Correct name`)
-
+  
   # Narrow down form B core: turmas
   form_b_core <-
     form_b_core %>%
@@ -207,7 +215,7 @@ if('cleaned_data.RData' %in% dir()){
                   DOB,
                   HOUSEHOLD_NUMBER,
                   GENDER)#,
-                  # SCHOOL_NAME)#,
+  # SCHOOL_NAME)#,
   #                 ABSENCE_FIRST_MONTH,
   #                 ABSENCE_SECOND_MONTH,
   #                 ABSENCE_THIRD_MONTH)
@@ -447,7 +455,7 @@ if('cleaned_data.RData' %in% dir()){
                                        ifelse(df$SCHOOL_CONDITIONS == 6, 'Convencional e outras precárias',
                                               ifelse(df$SCHOOL_CONDITIONS == 7, 'Todas de material convencional',
                                                      ifelse(df$SCHOOL_CONDITIONS == 8, 'Outro', NA))))))))
-
+  
   # Clean up type of latrine
   df$TYPE_OF_LATRINE <- 
     ifelse(df$TYPE_OF_LATRINE == 1, 'Retrete ligada a fossa séptica',
@@ -507,6 +515,147 @@ if('cleaned_data.RData' %in% dir()){
   # postos$prevalencia[postos$SCHOOL_NAME == 'ESCOLA PRIMARIA PRIMEIRO E SEGUNDO GRAU GRACA MACHEL']  <- 10
   
   #####
+  # TEACHER ABSENTEEISM
+  #####
+  
+  # The form D forms are those pertaining to teachers
+  # Form d core is the "roster": one row = one teacher
+  
+  # Combine all the months into one dataframe
+  form_d_july <- form_d_july %>% mutate(month = 'july') %>% rename(day = ABSENCE_IN_JULY)
+  form_d_august <- form_d_august %>% mutate(month = 'august') %>% rename(day = ABSENCE_IN_AUGUST)
+  form_d_september <- form_d_september %>% mutate(month = 'september')%>% rename(day = ABSENCE_IN_SEPTEMBER)
+  form_d_october <- form_d_october %>% mutate(month = 'october') %>% rename(day = ABSENCE_IN_OCTOBER)
+  form_d_november <- form_d_november %>% mutate(month = 'november') %>% rename(day = ABSENCE_IN_NOVEMBER)
+  
+  # Make a dataframe in which one row is one teacher absence
+  teacher_absences <-
+    rbind(
+      form_d_july,
+      form_d_august,
+      form_d_september,
+      form_d_october,
+      form_d_november)
+  
+  # Get possible dates for presences
+  possible_dates <- seq(as.Date('2015-07-01'), as.Date('2015-12-31'), 1)
+  # Remove weekends from the date range
+  possible_dates <- 
+    possible_dates[!weekdays(possible_dates) %in% c('Saturday', 'Sunday')]
+  # Create a dataframe in which one row = one student-day
+  teacher_df <- 
+    expand.grid(
+      date = possible_dates,
+      teacher_id = sort(unique(form_d_core$`_URI`)))
+  teacher_df$year <- 2015
+  teacher_df$month <- format(teacher_df$date, '%m')
+  teacher_df$day <- format(teacher_df$date, '%d')
+  
+  # Join to teacher data 
+  teacher_df <- 
+    teacher_df %>%
+    left_join(form_d_core %>%
+                dplyr::select(`_URI`,
+                              NAME,
+                              DOB,
+                              MONTHS_OF_WORK,
+                              SCHOOL_UUID),
+              by = c('teacher_id' = '_URI'))
+  
+  # Join to school data
+  teacher_df <-
+    teacher_df %>%
+    left_join(form_a_core %>%
+                dplyr::select(SCHOOL_UUID,
+                              GPS_LAT, GPS_LNG, DISTRICT))
+  
+  # Get which class they directed
+  # (creating extra rows, do inner join instead)
+  teacher_df <-
+    teacher_df %>%
+    left_join(form_d_directed %>%
+                # remove the duplicates (these shouldn't be here!)
+                filter(!duplicated(`_PARENT_AURI`)) %>%
+                rename(teacher_id = `_PARENT_AURI`) %>%
+                dplyr::select(teacher_id, CLASS))
+  
+  # Get the CLASS_UUID of the class that each teacher directed
+  teacher_df <-
+    teacher_df %>%
+    left_join(form_b_core %>%
+                mutate(CLASS = paste0(GRADE, CLASS_NAME)) %>%
+                # remove the duplicate school classes (thee shouldn't be any)
+                filter(!duplicated(SCHOOL_UUID, CLASS)) %>%
+                dplyr::select(CLASS, CLASS_UUID, SCHOOL_UUID))
+  
+  # Join to class data
+  teacher_df <- 
+    teacher_df %>%
+    left_join(form_b_core %>%
+                dplyr::select(SCHOOL_UUID,
+                              CLASS_UUID,
+                              CLASS_NAME,
+                              GRADE,
+                              FIRST_MONTH_OF_REFERENCE,
+                              SECOND_MONTH_OF_REFERENCE,
+                              THIRD_MONTH_OF_REFERENCE),
+              by = c('SCHOOL_UUID', 'CLASS_UUID'))
+  
+  # Remove uneligible months
+  teacher_df$keep <- 
+    as.numeric(teacher_df$month) == as.numeric(teacher_df$FIRST_MONTH_OF_REFERENCE) |
+    as.numeric(teacher_df$month) == as.numeric(teacher_df$SECOND_MONTH_OF_REFERENCE) |
+    as.numeric(teacher_df$month) == as.numeric(teacher_df$THIRD_MONTH_OF_REFERENCE)
+  teacher_df <- teacher_df[teacher_df$keep,]
+  
+  
+  # Remove xcess (helper) columns
+  teacher_df$FIRST_MONTH_OF_REFERENCE <-
+    teacher_df$SECOND_MONTH_OF_REFERENCE <-
+    teacher_df$THIRD_MONTH_OF_REFERENCE <-
+    teacher_df$keep <- 
+    NULL
+  
+  # Remove holidays from teacher_df
+  teacher_df <- 
+    teacher_df %>%
+    left_join(holidays %>%
+                mutate(holiday = TRUE,
+                       SCHOOL_UUID = turma_id) %>%
+                dplyr::select(SCHOOL_UUID,
+                              date,
+                              holiday),
+              by = c('date', 'SCHOOL_UUID')) %>%
+    mutate(holiday = ifelse(is.na(holiday), FALSE, holiday)) %>%
+    filter(!holiday) %>%
+    dplyr::select(-holiday)
+  
+  # Now teacher_df is a list of eligible absences (teacher-date pairs)
+  
+  # Next, define which of the eligible rows are absences
+  teacher_df <- 
+    teacher_df %>%
+    left_join(teacher_absences %>%
+                rename(teacher_id = `_PARENT_AURI`) %>%
+                mutate(year = '2015') %>%
+                mutate(day = add_zero(day)) %>%
+                mutate(date = as.Date(paste0('2015-', month, '-', day),
+                                      format = '%Y-%b-%d')) %>%
+                mutate(absence = TRUE) %>%
+                dplyr::select(date, 
+                              teacher_id, 
+                              absence),
+              by = c('date', 'teacher_id')) %>%
+    mutate(absence = ifelse(is.na(absence), FALSE, absence))
+  
+  # # Get district
+  # teacher_df <-
+  #   teacher_df %>%
+  #   left_join(form_a_core %>%
+  #               dplyr::select(SCHOOL_UUID, DISTRICT))
+  
+  
+  #####
   # GET SPATIAL DATA
   moz3 <- getData('GADM', country = 'MOZ', level = 3)
   maputo <- moz3[moz3@data$NAME_1 %in% c('Maputo', 'Maputo City'),]
@@ -518,6 +667,8 @@ if('cleaned_data.RData' %in% dir()){
   
   # ISSUE: THERE ARE SOME NA SCHOOLS:
   # NEED TO BE FILLED IN AND DISCOVERED WHY THEY GOT THAT WAY
+  
+  
 }
 
 
@@ -644,4 +795,13 @@ for (school in sort(unique(students$SCHOOL_NAME))){
   write_csv(sub_data, dataframe_name)
 }
 
+
+
+
+
+# 
+# # Join to form_d_core to get general teacher info
+# teacher_absences <-
+#   left_join(teacher_absences,
+#             form_d_core)
 
