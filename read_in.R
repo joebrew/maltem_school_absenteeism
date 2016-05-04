@@ -709,10 +709,15 @@ laia <- laia %>%
                             HOUSEHOLD_NUMBER),
             by = c('student_id' = '_URI'))
 
-# Remove those (159) students with no school name
+# Remove those (159) students with no school name # NO
+# Rename those with no school name to be
 laia <-
   laia %>%
-  filter(!is.na(SCHOOL_NAME))
+  # filter(!is.na(SCHOOL_NAME))
+  mutate(SCHOOL_NAME = 
+           ifelse(is.na(SCHOOL_NAME),
+                  'EPC Ungucha',
+                  SCHOOL_NAME))
 
 write_csv(laia, 'magude_student_absences_and_presences.csv')
 
