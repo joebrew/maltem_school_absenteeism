@@ -3,3 +3,4 @@ data/
 .RData
 .xls
 .Rproj.user
+*.yaml

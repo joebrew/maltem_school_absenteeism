@@ -716,7 +716,7 @@ laia <-
   # filter(!is.na(SCHOOL_NAME))
   mutate(SCHOOL_NAME = 
            ifelse(is.na(SCHOOL_NAME),
-                  'EPC Ungucha',
+                  'EPC xUngucha',
                   SCHOOL_NAME))
 
 write_csv(laia, 'magude_student_absences_and_presences.csv')
@@ -768,6 +768,7 @@ students <-
 # Add 0s to numbers if needed
 pre_zero <- function(var, n = 2){
   var <- as.character(var)
+  var <- ifelse(is.na(var), '0', var)
   for(i in 1:length(var)){
     while(nchar(var[i]) < n){
       var[i] <- paste0('0', var[i])
