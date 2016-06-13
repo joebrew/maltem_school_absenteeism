@@ -652,7 +652,50 @@ form_b <-
 
 # Now join all class info to students
 # Need to remove a few columns here first to avoid duplicates!
-x <- 
+students <- 
   left_join(x = students,
-            y = form_b,
+            y = form_b %>%
+              # Avoid duplicating
+              dplyr::select(-gender, 
+                            -student_number,
+                            -school_number),
             by = 'combined_number')
+
+# SCHOOL LEVEL
+# For each school from form a, get the days where class was held
+
+# Get all of days off into one dataframe
+days_off <- 
+  c("form_a_2_days_off_april",                        
+    "form_a_2_days_off_april_b",                      
+    "form_a_2_days_off_august",                       
+    "form_a_2_days_off_february_b",                   
+    "form_a_2_days_off_july",                         
+    "form_a_2_days_off_june",                         
+    "form_a_2_days_off_march_b",                      
+    "form_a_2_days_off_may",                          
+    "form_a_2_days_off_november",                     
+    "form_a_2_days_off_october",                      
+    "form_a_2_days_off_september")
+keys <- c('April 2015',
+          'April 2016',
+          'August 2015',
+          'February 2016',
+          'July 2015',
+          'June 2015',
+          'March 2016',
+          'May 2015',
+          'November 2015',
+          'October 2015',
+          'September 2015')
+days_off_df <- data.frame(form_a_2_days_off_april)[0,]
+for (i in 1:length(days_off)){
+  x <- get('form_a_2_days_off_april')
+  x$src <- days_off[i]
+  names(x)[9] <- 'days_off'
+  x$date <- keys[i]
+  days_off_df <- rbind(days_off_df,
+                       x)
+}
+
+# Get all the days that students were absent
