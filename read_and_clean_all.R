@@ -534,8 +534,7 @@ rm(form_a_core,
    form_d_september,
    form_d_subject_lectured,
    holidays,
-   temp,
-   valid_schools)
+   temp)
 
 # Mark the phase
 absences$phase <- 1
@@ -645,23 +644,17 @@ for (j in 1:ncol(form_b_2_core2)){
 }
 
 # Join both the form bs so that we have all academic info in one place
-form_b <- 
+performance <- 
   inner_join(form_b_2_core,
              form_b_2_core2,
-             by = c('uri' = 'parent_auri'))
+             by = c('uri' = 'parent_auri')) %>%
+  # get rid of those columns which are duplicated in students
+  dplyr::select(-gender,
+                -student_number,
+                -school_number)
 
-# Now join all class info to students
-# Need to remove a few columns here first to avoid duplicates!
-students <- 
-  left_join(x = students,
-            y = form_b %>%
-              # Avoid duplicating
-              dplyr::select(-gender, 
-                            -student_number,
-                            -school_number),
-            by = 'combined_number')
 
-# SCHOOL LEVEL
+# SCHOOL LEVEL ----------------------------------------------------------
 # For each school from form a, get the days where class was held
 
 # Get all of days off into one dataframe
@@ -688,14 +681,176 @@ keys <- c('April 2015',
           'November 2015',
           'October 2015',
           'September 2015')
+months <- c('April',
+            'April',
+            'August',
+            'February',
+            'July',
+            'June',
+            'March',
+            'May',
+            'November',
+            'October',
+            'September')
+years <- c(2015,
+           2016,
+           2015,
+           2016,
+           2015,
+           2015,
+           2016,
+           2015,
+           2015,
+           2015,
+           2015)
 days_off_df <- data.frame(form_a_2_days_off_april)[0,]
 for (i in 1:length(days_off)){
   x <- get('form_a_2_days_off_april')
   x$src <- days_off[i]
   names(x)[9] <- 'days_off'
-  x$date <- keys[i]
+  x$month_year <- keys[i]
+  x$month <- months[i]
+  x$year <- years[i]
   days_off_df <- rbind(days_off_df,
                        x)
 }
 
-# Get all the days that students were absent
+# Create an actual date column
+days_off_df$date <-
+  as.Date(paste0(days_off_df$month,
+                 ' ',
+                 days_off_df$days_off,
+                 ' ',
+                 days_off_df$year),
+          format = '%B %d %Y')
+# Select only the columns we need
+days_off_df <- 
+  days_off_df %>%
+  dplyr::select(uri, parent_auri, date)
+# Get meaningful names in days_off_df
+days_off_df <-
+  days_off_df %>%
+  left_join(form_a_2_core %>%
+              dplyr::select(school, uri, district),
+            by = c('parent_auri' = 'uri')) %>%
+  left_join(valid_schools %>%
+              dplyr::select(`School Code`, `Correct name`) %>%
+              rename(school = `School Code`,
+                     school_name = `Correct name`) %>%
+              mutate(school = as.character(school)),
+            by = 'school') %>%
+  # Keep only those columns we need
+  dplyr::select(school, school_name, date)
+# Keep only unique
+days_off_df <- days_off_df[!duplicated(days_off_df),]
+# arrange
+days_off_df <- days_off_df %>%
+  arrange(date)
+
+# As of now we have three dataframes of interest
+# 1. students = a roster
+# 2. days_off_df = a dataframe of each schools days off
+# 3. performance = the academic performance of each student
+
+# Now create an ABSENCES dataframe ---------
+# b_2 = students
+# c_2 = teachers
+# d_2 = teachers (but crappy data, use c_2 instead)
+
+absence_dfs <- 
+  c('form_b_2_absentism_info_days_absent_february',
+    'form_b_2_absentism_info_days_absent_march',
+    'form_b_2_absentism_info_days_absent_april')
+absences <- form_b_2_absentism_info_days_absent_april
+names(absences)[9] <- 'day'
+absences$src <- absences$month <- absences$year <-  NA
+absences <- absences[0,]
+months <- c('February', 'March', 'April')
+years <- c(2016, 2016, 2016)
+for (i in 1:length(absence_dfs)){
+  this_month <- 
+    get(absence_dfs[i])
+  names(this_month)[9] <- 'day'
+  this_month$src <- absence_dfs[i]
+  this_month$month <- months[i]
+  this_month$year <- years[i]
+  absences <- rbind(absences,
+                    this_month)
+}
+# Keep only relevant variables
+absences <-
+  absences %>%
+  mutate(date = as.Date(paste0(month, ' ',
+                               day, ' ', 
+                               year), 
+                        format = '%B %d %Y')) %>%
+  dplyr::select(parent_auri, date)
+# Bring in inteligible id numbers
+absences <- 
+  absences %>%
+  left_join(form_b_2_core %>%
+              dplyr::select(combined_number, uri),
+            by = c('parent_auri' = 'uri')) %>%
+  dplyr::select(-parent_auri)
+# Add an "absent = TRUE" column
+absences$absent = TRUE
+
+# As of now we have four dataframes of interest for phase 2
+# 1. students = a roster
+# 2. days_off_df = a dataframe of each schools days off
+# 3. performance = the academic performance of each student
+# 4. absences = a student-absence paired set
+
+# We can now construct a dataset with ALL absences/presences
+# for all students in 2016
+attendance <- 
+  expand.grid(date = seq(as.Date('2016-02-01'),
+                         as.Date('2016-04-30'),
+                         by = 1),
+              combined_number = sort(unique(students$combined_number)))
+# Bring in the school number
+attendance <- 
+  left_join(attendance,
+            students %>%
+              dplyr::select(combined_number, school_number),
+            by = 'combined_number')
+# Flag weekends and remove
+attendance$dow <- weekdays(attendance$date)
+attendance <- attendance %>%
+  filter(dow != 'Saturday',
+         dow != 'Sunday')
+# Flag those no lectivo days from each school
+attendance <-
+  attendance %>%
+  mutate(school_number = as.numeric(as.character(school_number))) %>%
+  left_join(days_off_df %>%
+              mutate(school_number = as.numeric(as.character(school))) %>%
+              dplyr::select(school_number, date) %>%
+              mutate(no_lectivo = TRUE),
+            by = c('date', 'school_number')) %>%
+  mutate(no_lectivo = ifelse(is.na(no_lectivo), FALSE,
+                             no_lectivo)) %>%
+  # Remove the no lectivo days
+  filter(!no_lectivo) %>%
+  dplyr::select(-dow, -no_lectivo)
+
+# "Attendnance" is the days they SHOULD have been at
+# school
+# "Absences" is the days they weren't at school
+# we assume days not flagged as absent were attended
+# Let's join
+attendance <- 
+  left_join(x = attendance,
+            y = absences,
+            by = c('date', 'combined_number')) %>%
+  mutate(absent = ifelse(is.na(absent), FALSE, TRUE))
+
+# We no longer need days_off_df nor absences
+rm(days_off_df, absences, absence_dfs)
+
+# As of now we have three dataframes of interest for phase 2
+# 1. students = a roster
+# 2. performance = the academic performance of each student
+# 3. attendance = a student-absence-presence paired set
+
+
