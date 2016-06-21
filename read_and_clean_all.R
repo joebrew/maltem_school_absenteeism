@@ -478,6 +478,7 @@ students <-
   #               -CLASS_UUID, -SCHOOL_UUID,
   #               -year, -month, -day) %>%
   dplyr::select(district,
+                student_id,
                 SCHOOL_NAME,
                 NAME,
                 gender,
@@ -555,8 +556,11 @@ library(dplyr)
 library(DBI)
 library(readxl)
 
+# Get which network I'm on
+# wifi <- readLines(connection(system('nm-tool | grep [*]')))
+
 # Get stuff from config
-connection_options <- yaml::yaml.load_file('credentials.yaml')
+connection_options <- yaml::yaml.load_file('credentials_joe.yaml')
 
 # Open connection using dplyr
 con <- do.call('src_mysql', connection_options)
@@ -845,13 +849,132 @@ attendance <-
             by = c('date', 'combined_number')) %>%
   mutate(absent = ifelse(is.na(absent), FALSE, TRUE))
 
-# We no longer need days_off_df nor absences
-# rm(days_off_df, absences, absence_dfs)
+########################## CLEAN UP PERFORMANCE
+# Clean up performance
+x <- performance
+# Change the days_off column, which is actually clase de etica
+names(x) <- gsub('days_off_august|day_off_august', 'etica', names(x))
+# Keep only those columns that matter
+x <- x[,names(x) %in% c('cod_inq', 
+                        'combined_number',
+                        'student_found') |
+         grepl('avaliation', names(x))]
+# Put into a different dataframe
+x_df <- 
+  data.frame(year = NA,
+             trimester = NA,
+             period = NA,
+             subject = NA,
+             value = NA)
 
-# As of now we have three dataframes of interest for phase 2
+# Clean up the names
+
+# Define function for converting column to dataframe of results
+column_to_df <- function(column_name){
+  if(grepl('avaliation', column_name)){
+    split_name <- unlist(strsplit(x = column_name, split = '_'))
+    # Get the letter (which can be mapped to a trimester)
+    the_letter <- split_name[nchar(split_name) == 1][1]
+    # Map the letter to a trimester and year
+    year <- ifelse(the_letter %in% c('a', 'b', 'c'), 2015,
+                   ifelse(the_letter == 'd', 2016, NA))
+    trimester<- ifelse(the_letter == 'a', 1,
+                       ifelse(the_letter == 'b', 2,
+                              ifelse(the_letter == 'c', 3,
+                                     ifelse(the_letter == 'd', 4, NA))))
+    # Get the period
+    period <- ifelse('mt' %in% split_name, 'MT',
+                     ifelse('ap' %in% split_name, 'AP', NA))
+    # Get the subject
+    subject <- 
+      gsub('_a_|_b_|_c_|_d_', 
+           '', 
+           gsub('_a_|_b_|_c_|_d_|_2016|_2015|_mt_|_ap_', 
+                '_', 
+                substr(column_name, 22, nchar(column_name))))
+    # Return a dataframe of the results
+    data.frame(combined_number = NA,
+               year = year,
+               trimester = trimester,
+               period = period,
+               subject = subject,
+               value = NA)
+  }
+}
+
+# Loop through each row of x and get results
+results_list <- list()
+counter <- 0
+for (j in 1:ncol(x)){
+  column_name <- names(x)[j]
+  if(grepl('avaliation', column_name)){
+    message(paste0('column: ', j, '\n'))
+    # Create a dataframe of results
+    results_template <- column_to_df(names(x)[j])
+    for (i in 1:nrow(x)){
+      counter <- counter + 1
+      # Copy the results
+      results <- results_template
+      # Get the combined number
+      results$combined_number <- x$combined_number[i]
+      # Get the grade
+      results$value <- as.numeric(x[i, j])
+      # Fix the row names
+      row.names(results) <- counter
+      # Stick into results_list
+      results_list[[counter]] <- results
+    }
+  }
+}
+# Combine all the results list into one
+results_df <- do.call('rbind', results_list)
+
+# Overwrite performance with the more organized data
+performance <- results_df
+# And remove the other stuff
+rm(results_df, x)
+
+# Get df (ie, phase 1) into the same form as attendance
+# (ie, phase 2)
+df <- df %>%
+  dplyr::select(date, absence, student_id) %>%
+  left_join(students %>%
+              dplyr::select(student_id, combined_number, school_number),
+            by = 'student_id') %>%
+  dplyr::select(-student_id) %>%
+  rename(absent = absence) %>%
+  dplyr::select(date, combined_number, school_number, absent)
+
+# Combine both phase 1 and 2 absenteeism
+attendance <- 
+  rbind(
+    # phase 1
+    df %>% 
+      mutate(phase = 1),
+    attendance %>%
+      mutate(phase = 2))
+
+# Keep only those students that appear in both phase 1
+# and phase 2
+attendance <-
+  attendance %>%
+  group_by(combined_number) %>%
+  mutate(both_phases = length(which(phase == 1)) > 0 &
+           length(which(phase == 2)) > 0) %>%
+  ungroup %>%
+  filter(both_phases) %>%
+  dplyr::select(-both_phases)
+
+# Remove any references to December of January 
+# (smmer break)
+attendance <- 
+  attendance %>%
+  filter(!format(date, '%m') %in% c('12', '01'))
+
+
+# As of now we have a few dataframes of interest for phase 2
 # 1. students = a roster
 # 2. performance = the academic performance of each student
-# 3. attendance = a student-absence-presence paired set
+# 3. attendance = a student-absence-presence paired set (both phase 1 and 2)
+# 4. days_off_df = which non-lectivo days each school had
 
-
-  

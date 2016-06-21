@@ -1,5 +1,33 @@
 # First run "read_and_clean_all.R"
 
+# Get which schools have been collected so far
+so_far <-
+  students %>%
+  # Get whether they were found or not
+  left_join(form_b_2_core %>%
+              dplyr::select(student_found,
+                            combined_number),
+            by = 'combined_number') %>%
+  group_by(school_number) %>%
+  summarise(school_name = first(SCHOOL_NAME),
+            n = length(unique(combined_number)),
+            found = length(which(student_found == '1')),
+            not_found = length(which(student_found == '2'))) %>%
+  filter(found + not_found > 10) %>%
+  dplyr::select(school_number)
+so_far <- as.character(unlist(so_far))
+# Plots
+x <- 
+  attendance %>%
+  # Keep only those schools which have been collected so far
+  filter(school_number %in% so_far) %>%
+  mutate(year_month = as.Date(paste0(format(date, '%Y-%m'), '-01'))) %>%
+  group_by(year_month) %>%
+  summarise(rate = length(which(absent)) / n())
+ggplot(data = x,
+       aes(x = year_month, y = rate)) +
+  geom_bar(stat = 'identity', alpha = 0.6)
+
 ## PHASE 1 CHECKS
 # School uniqueness (total of 25 schools)
 # Turma uniqueness
@@ -27,8 +55,15 @@ check <-
   arrange(desc(n))
 
 check
-days_off_df %>% 
-  filter(days_off_df$school == 1)
+View(days_off_df %>% 
+  filter(days_off_df$school == 1))
+
+# See number of non-lective days per school per month
+check <-
+  days_off_df %>%
+  mutate(month = format(date, '%m'),
+         year = format(date, '%Y')) %>%
+  group_by(school_name, year, month) %>% tally
 
 # Ver, por cada escola, numero de estudantes identificados nessa escola para o curos 2016 e numero de estudantes nao encontrados
 
@@ -44,6 +79,33 @@ check <-
             n = length(unique(combined_number)),
             found = length(which(student_found == '1')),
             not_found = length(which(student_found == '2')))
+
+# Produce list of non identified students
+# only for those schools which have any identified students (ie, have been visited)
+list_non_identified <- 
+  students %>%
+  # Get whether they were found or not
+  left_join(form_b_2_core %>%
+              dplyr::select(student_found,
+                            combined_number),
+            by = 'combined_number') %>%
+  group_by(school_number) %>%
+  mutate(visited = length(which(student_found == '1')) > 5) %>%
+  ungroup %>%
+  filter(visited) %>%
+  filter(student_found == '2') %>%
+  dplyr::select(district, SCHOOL_NAME, GRADE, CLASS_NAME, NAME)
+
+# Number of students found / not found by inqueridor
+check <- 
+  form_b_2_core %>%
+  group_by(cod_inq) %>%
+  summarise(n = n(),
+            found = length(which(student_found == '1')),
+            not_found = length(which(student_found == '2'))) %>%
+  mutate(ratio_found_not_found = found / not_found,
+         p_found = found / n * 100)
+barplot(t(as.matrix(check[,c('n', 'p_found')])), names.arg = check$cod_inq)
 
 # Informação existente sobre o desempenho escolar para o curso 2015 (ie % de respostas completas, % de NA e % de Null) para as diferentes cadeiras e ao longo dos meses. 
 # Lists per school and per class with number and % of students with not found in the new course 2016
@@ -75,9 +137,26 @@ check <-
   mutate(absences = ifelse(is.na(absences), 0, absences),
          absences_feb = ifelse(is.na(absences_feb), 0, absences_feb),
          absences_mar = ifelse(is.na(absences_mar), 0, absences_mar),
-         absences_apr = ifelse(is.na(absences_apr), 0, absences_apr))
+         absences_apr = ifelse(is.na(absences_apr), 0, absences_apr)) %>%
+  left_join(  students %>%
+                # Get whether they were found or not
+                left_join(form_b_2_core %>%
+                            dplyr::select(student_found,
+                                          combined_number),
+                          by = 'combined_number') %>%
+                group_by(school_number) %>%
+                mutate(visited = length(which(student_found == '1')) > 5) %>%
+                ungroup %>%
+                filter(visited)) %>%
+  filter(student_found == '2') %>%
+  filter(!is.na(visited))
 
-check[check$absences == 0,]
+# Look at 2015 and see if there are students who had no absences in any month
+check2 <-
+  df %>%
+  group_by(month, student_id) %>%
+  summarise(absences = length(which(absence))) %>%
+  filter(absences == 0)
 
 # How many students are absent more than 18 days per month? (do that for each month)
 # Lists per school, with the name, Perm_ID, DOB, grade, class, months of reference and absentism days produced
@@ -100,7 +179,7 @@ check <-
               mutate(day_off = TRUE),
             by = c('school', 'date')) %>%
   filter(day_off)
-
+# WE NEED TO CORRECT THIS!
 
 # How many profesors x school? 
 # Lists per school, with number of professors for which we have info
@@ -110,8 +189,15 @@ check <-
 # prof date of birth? (is any of them younger than 18? Or older than 70?)
 # Lists per school, with name of profesor and date of birth which is inconsistent (younger than 18 or older than 70)
 
+# 2015
 check <- 
   form_d_core %>%
+  mutate(dob = as.Date(substr(dob, 1,10)))
+hist(check$dob, breaks = 100)
+
+# 2016
+check <-
+  form_c_2_core %>%
   mutate(dob = as.Date(substr(dob, 1,10)))
 hist(check$dob, breaks = 100)
 
