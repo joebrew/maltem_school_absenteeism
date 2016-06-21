@@ -24,7 +24,7 @@ for (i in 1:length(data_files)){
   phase_1_read_data(data_files[i])
 }
 
-##### Go through each file, keeping only 
+##### Go through each file, keeping only
 # the necessary columns, and joining together
 # (for now, ignoring form d / teachers)
 
@@ -48,7 +48,7 @@ form_a_core <-
 valid_schools <- read_excel('misc/School names.xlsx')
 
 # Fix names
-form_a_core <- 
+form_a_core <-
   form_a_core %>%
   left_join(valid_schools %>%
               dplyr::select(`School names…`,
@@ -70,21 +70,21 @@ form_b_core <-
                 THIRD_MONTH_OF_REFERENCE)
 
 # Narrow down the form_b_month_n sheets: each day is a turma-festivo pair
-form_b_month_one <- 
+form_b_month_one <-
   form_b_month_one %>%
   mutate(month = 1,
          day = DAYS_ONE) %>%
   dplyr::select(`_PARENT_AURI`,
                 month,
                 day)
-form_b_month_two <- 
+form_b_month_two <-
   form_b_month_two %>%
   mutate(month = 2,
          day = DAYS_TWO) %>%
   dplyr::select(`_PARENT_AURI`,
                 month,
                 day)
-form_b_month_three <- 
+form_b_month_three <-
   form_b_month_three %>%
   mutate(month = 3,
          day = DAYS_THREE) %>%
@@ -93,7 +93,7 @@ form_b_month_three <-
                 day)
 
 # Join all holidays together
-holidays <- 
+holidays <-
   rbind(form_b_month_one,
         form_b_month_two,
         form_b_month_three)
@@ -110,7 +110,7 @@ add_zero <- function(x){
 }
 
 # Get real dates into holidays
-temp <- 
+temp <-
   holidays %>%
   left_join(form_b_core %>%
               dplyr::select(`_URI`,
@@ -128,13 +128,13 @@ temp$THIRD_MONTH_OF_REFERENCE[temp$THIRD_MONTH_OF_REFERENCE == '01'] <- '09'
 # Divide temp into 3 months, and create dates
 temp$date <-
   as.character(ifelse(temp$month == 1,
-                      (paste0('2015-', 
-                              temp$FIRST_MONTH_OF_REFERENCE, 
+                      (paste0('2015-',
+                              temp$FIRST_MONTH_OF_REFERENCE,
                               '-',
                               temp$day)),
                       ifelse(temp$month == 2,
-                             (paste0('2015-', 
-                                     temp$SECOND_MONTH_OF_REFERENCE, 
+                             (paste0('2015-',
+                                     temp$SECOND_MONTH_OF_REFERENCE,
                                      '-',
                                      temp$day)),
                              ifelse(temp$month == 3,
@@ -159,9 +159,9 @@ holidays <- temp %>%
 # table(form_c_days_first$DAYS_OF_ABSENCE_FIRST_MONTH)
 
 # Form C : students
-form_c_core <- 
+form_c_core <-
   form_c_core %>%
-  dplyr::select(`_URI`, 
+  dplyr::select(`_URI`,
                 NAME,
                 PERMID,
                 SCHOOL_UUID,
@@ -180,24 +180,24 @@ form_c_days_first <-
   mutate(month = 1,
          day = DAYS_OF_ABSENCE_FIRST_MONTH) %>%
   dplyr::select(`_PARENT_AURI`,
-                month, 
+                month,
                 day)
 form_c_days_second <-
   form_c_days_second %>%
   mutate(month = 2,
          day = DAYS_OF_ABSENCE_SECOND_MONTH) %>%
   dplyr::select(`_PARENT_AURI`,
-                month, 
+                month,
                 day)
 form_c_days_third <-
   form_c_days_third %>%
   mutate(month = 3,
          day = DAYS_OF_ABSENCE_THIRD_MONTH) %>%
   dplyr::select(`_PARENT_AURI`,
-                month, 
+                month,
                 day)
 # Join all absences together
-absences <- 
+absences <-
   rbind(form_c_days_first,
         form_c_days_second,
         form_c_days_third)
@@ -218,7 +218,7 @@ temp <- absences %>%
                             THIRD_MONTH_OF_REFERENCE),
             by = 'CLASS_UUID')
 
-temp <- 
+temp <-
   temp %>%
   mutate(FIRST_MONTH_OF_REFERENCE = add_zero(FIRST_MONTH_OF_REFERENCE),
          SECOND_MONTH_OF_REFERENCE = add_zero(SECOND_MONTH_OF_REFERENCE),
@@ -230,13 +230,13 @@ temp$THIRD_MONTH_OF_REFERENCE[temp$THIRD_MONTH_OF_REFERENCE == '01'] <- '09'
 # Divide temp into 3 months, and create dates
 temp$date <-
   as.character(ifelse(temp$month == 1,
-                      (paste0('2015-', 
-                              temp$FIRST_MONTH_OF_REFERENCE, 
+                      (paste0('2015-',
+                              temp$FIRST_MONTH_OF_REFERENCE,
                               '-',
                               temp$day)),
                       ifelse(temp$month == 2,
-                             (paste0('2015-', 
-                                     temp$SECOND_MONTH_OF_REFERENCE, 
+                             (paste0('2015-',
+                                     temp$SECOND_MONTH_OF_REFERENCE,
                                      '-',
                                      temp$day)),
                              ifelse(temp$month == 3,
@@ -255,7 +255,7 @@ temp <- temp %>%
   dplyr::select(student_id, date)
 
 # Write over absences
-absences <- temp 
+absences <- temp
 # Abseces is now a one row = one student absence
 
 #######################################################
@@ -266,10 +266,10 @@ absences <- temp
 # Get possible dates
 possible_dates <- seq(as.Date('2015-03-01'), as.Date('2015-12-31'), 1)
 # Remove weekends from the date range
-possible_dates <- 
+possible_dates <-
   possible_dates[!weekdays(possible_dates) %in% c('Saturday', 'Sunday')]
 # Create a dataframe in which one row = one student-day
-df <- 
+df <-
   expand.grid(
     date = possible_dates,
     student_id = sort(unique(form_c_core$`_URI`)))
@@ -278,11 +278,11 @@ df$month <- format(df$date, '%m')
 df$day <- format(df$date, '%d')
 
 # Join to student data (slow)
-df <- 
+df <-
   df %>%
   left_join(form_c_core %>%
               dplyr::select(`_URI`,
-                            PERMID, 
+                            PERMID,
                             CLASS_UUID,
                             DOB,
                             GENDER,
@@ -290,7 +290,7 @@ df <-
             by = c('student_id' = '_URI'))
 
 # Join to class data
-df <- 
+df <-
   df %>%
   left_join(form_b_core %>%
               dplyr::select(SCHOOL_UUID,
@@ -305,9 +305,9 @@ df <-
 # !!! still a bunch of weird months table(df$THIRD_MONTH_OF_REFERENCE)
 
 # Remove uneligible months
-df$keep <- 
+df$keep <-
   as.numeric(df$month) == as.numeric(df$FIRST_MONTH_OF_REFERENCE) |
-  as.numeric(df$month) == as.numeric(df$SECOND_MONTH_OF_REFERENCE) | 
+  as.numeric(df$month) == as.numeric(df$SECOND_MONTH_OF_REFERENCE) |
   as.numeric(df$month) == as.numeric(df$THIRD_MONTH_OF_REFERENCE)
 df <- df[df$keep,]
 
@@ -316,11 +316,11 @@ df <- df[df$keep,]
 df$FIRST_MONTH_OF_REFERENCE <-
   df$SECOND_MONTH_OF_REFERENCE <-
   df$THIRD_MONTH_OF_REFERENCE <-
-  df$keep <- 
+  df$keep <-
   NULL
 
 # Remove holidays from df
-df <- 
+df <-
   df %>%
   left_join(holidays %>%
               mutate(holiday = TRUE,
@@ -336,21 +336,21 @@ df <-
 # Now df is a list of eligible absences (student-date pairs)
 
 # Next, define which of the eligible rows are absences
-df <- 
+df <-
   df %>%
   left_join(absences %>%
               mutate(absence = TRUE) %>%
-              dplyr::select(date, 
-                            student_id, 
+              dplyr::select(date,
+                            student_id,
                             absence),
             by = c('date', 'student_id')) %>%
   mutate(absence = ifelse(is.na(absence), FALSE, absence))
 
 # Bring in full school information
-df <- 
+df <-
   df %>%
   left_join(form_a_core %>%
-              dplyr::select(SCHOOL_UUID, 
+              dplyr::select(SCHOOL_UUID,
                             SCHOOL_NAME,
                             GPS_ALT,
                             GPS_ACC,
@@ -386,21 +386,21 @@ df$DOB <- as.Date(substr(df$DOB, 1, 10),
 df$`valid schools` <- NULL
 
 # Get cleaner district
-df$district <- 
+df$district <-
   ifelse(df$DISTRICT == 1, 'Manhiça',
-         ifelse(df$DISTRICT == 2, 'Magude', 
+         ifelse(df$DISTRICT == 2, 'Magude',
                 NA))
 df$DISTRICT <- NULL
 
 # Get cleaner gender
 df$gender <-
-  ifelse(df$GENDER == 1, 'Male', 
+  ifelse(df$GENDER == 1, 'Male',
          ifelse(df$GENDER == 2, 'Female',
                 NA))
 df$GENDER <- NULL
 
 # Clean up school conditions
-df$SCHOOL_CONDITIONS <- 
+df$SCHOOL_CONDITIONS <-
   ifelse(df$SCHOOL_CONDITIONS == 1, 'Caniço e palha',
          ifelse(df$SCHOOL_CONDITIONS == 2, 'Caniço e chapa de zinco',
                 ifelse(df$SCHOOL_CONDITIONS == 3, 'Matope e palha',
@@ -411,16 +411,16 @@ df$SCHOOL_CONDITIONS <-
                                                    ifelse(df$SCHOOL_CONDITIONS == 8, 'Outro', NA))))))))
 
 # Clean up type of latrine
-df$TYPE_OF_LATRINE <- 
+df$TYPE_OF_LATRINE <-
   ifelse(df$TYPE_OF_LATRINE == 1, 'Retrete ligada a fossa séptica',
          ifelse(df$TYPE_OF_LATRINE == 2, 'Latrine Melhorada',
                 ifelse(df$TYPE_OF_LATRINE == 3, 'Latrina tradicional melhorada',
                        ifelse(df$TYPE_OF_LATRINE == 4, 'Latrina tradicional não melhorada',
                               ifelse(df$TYPE_OF_LATRINE == 5, 'Sem latrina', NA)))))
 
-# Clean up lunch # 
-df$LUNCH <- ifelse(df$LUNCH == 1, TRUE, 
-                   ifelse(df$LUNCH == 2, FALSE, 
+# Clean up lunch #
+df$LUNCH <- ifelse(df$LUNCH == 1, TRUE,
+                   ifelse(df$LUNCH == 2, FALSE,
                           NA))
 
 
@@ -448,7 +448,7 @@ df <- df %>%
 # Get months of reference
 df <- df %>%
   left_join(form_b_core %>%
-              dplyr::select(SCHOOL_UUID, 
+              dplyr::select(SCHOOL_UUID,
                             FIRST_MONTH_OF_REFERENCE,
                             SECOND_MONTH_OF_REFERENCE,
                             THIRD_MONTH_OF_REFERENCE),
@@ -463,7 +463,7 @@ df <- df %>%
 df <-
   df %>%
   # filter(!is.na(SCHOOL_NAME))
-  mutate(SCHOOL_NAME = 
+  mutate(SCHOOL_NAME =
            ifelse(is.na(SCHOOL_NAME),
                   'EPC xUngucha',
                   SCHOOL_NAME))
@@ -494,7 +494,7 @@ students <-
 students <-
   students %>%
   # district number
-  mutate(district_number = ifelse(district == 'Magude', 2, 
+  mutate(district_number = ifelse(district == 'Magude', 2,
                                   ifelse(district == 'Manhiça', 1,
                                          NA))) %>%
   # school number
@@ -502,7 +502,7 @@ students <-
   # student number
   group_by(SCHOOL_NAME) %>%
   mutate(student_number = 1:n()) %>%
-  ungroup 
+  ungroup
 
 students <-
   students %>%
@@ -568,8 +568,8 @@ tables <- src_tbls(con)
 for (i in 1:length(tables)){
   message(paste0('Reading from the database: ', tables[i]))
   try({assign(tables[i],
-              tbl(con, 
-                  tables[i]) %>% 
+              tbl(con,
+                  tables[i]) %>%
                 collect
               ,
               envir = .GlobalEnv)})
@@ -580,16 +580,16 @@ save.image(paste0('snapshots/',
                   Sys.Date(),
                   '.RData'))
 
-# In form_b_2_core (students, phase 2), create a standardly named student_number  
+# In form_b_2_core (students, phase 2), create a standardly named student_number
 # so as to be compatible with the students dataframe
-form_b_2_core <- 
+form_b_2_core <-
   form_b_2_core %>%
   # get numbers for each element
-  mutate(district_number = unlist(lapply(strsplit(student_number, '-'), 
+  mutate(district_number = unlist(lapply(strsplit(student_number, '-'),
                                          function(x){x[[1]]})),
-         school_number = unlist(lapply(strsplit(student_number, '-'), 
+         school_number = unlist(lapply(strsplit(student_number, '-'),
                                        function(x){x[[2]]})),
-         student_id = unlist(lapply(strsplit(student_number, '-'), 
+         student_id = unlist(lapply(strsplit(student_number, '-'),
                                     function(x){x[[3]]}))) %>%
   mutate(district_number = pre_zero(district_number),
          school_number = pre_zero(school_number),
@@ -604,7 +604,7 @@ form_b_2_core <-
 # JOIN ACADEMIC PERFORMANCE DATA TO THE STUDENT DATA
 
 # First get rid of some columns in the 2015 data
-form_b_2_core <- 
+form_b_2_core <-
   form_b_2_core %>%
   dplyr::select(-creator_uri_user,
                 -creation_date,
@@ -615,7 +615,7 @@ form_b_2_core <-
                 -marked_as_complete_date,
                 -redcapupload)
 
-form_b_2_core2 <- 
+form_b_2_core2 <-
   form_b_2_core2 %>%
   dplyr::select(-creator_uri_user,
                 -creation_date,
@@ -644,7 +644,7 @@ for (j in 1:ncol(form_b_2_core2)){
 }
 
 # Join both the form bs so that we have all academic info in one place
-performance <- 
+performance <-
   inner_join(form_b_2_core,
              form_b_2_core2,
              by = c('uri' = 'parent_auri')) %>%
@@ -658,17 +658,17 @@ performance <-
 # For each school from form a, get the days where class was held
 
 # Get all of days off into one dataframe
-days_off <- 
-  c("form_a_2_days_off_april",                        
-    "form_a_2_days_off_april_b",                      
-    "form_a_2_days_off_august",                       
-    "form_a_2_days_off_february_b",                   
-    "form_a_2_days_off_july",                         
-    "form_a_2_days_off_june",                         
-    "form_a_2_days_off_march_b",                      
-    "form_a_2_days_off_may",                          
-    "form_a_2_days_off_november",                     
-    "form_a_2_days_off_october",                      
+days_off <-
+  c("form_a_2_days_off_april",
+    "form_a_2_days_off_april_b",
+    "form_a_2_days_off_august",
+    "form_a_2_days_off_february_b",
+    "form_a_2_days_off_july",
+    "form_a_2_days_off_june",
+    "form_a_2_days_off_march_b",
+    "form_a_2_days_off_may",
+    "form_a_2_days_off_november",
+    "form_a_2_days_off_october",
     "form_a_2_days_off_september")
 keys <- c('April 2015',
           'April 2016',
@@ -724,7 +724,7 @@ days_off_df$date <-
                  days_off_df$year),
           format = '%B %d %Y')
 # Select only the columns we need
-days_off_df <- 
+days_off_df <-
   days_off_df %>%
   dplyr::select(uri, parent_auri, date)
 # Get meaningful names in days_off_df
@@ -757,7 +757,7 @@ days_off_df <- days_off_df %>%
 # c_2 = teachers
 # d_2 = teachers (but crappy data, use c_2 instead)
 
-absence_dfs <- 
+absence_dfs <-
   c('form_b_2_absentism_info_days_absent_february',
     'form_b_2_absentism_info_days_absent_march',
     'form_b_2_absentism_info_days_absent_april')
@@ -768,7 +768,7 @@ absences <- absences[0,]
 months <- c('February', 'March', 'April')
 years <- c(2016, 2016, 2016)
 for (i in 1:length(absence_dfs)){
-  this_month <- 
+  this_month <-
     get(absence_dfs[i])
   names(this_month)[9] <- 'day'
   this_month$src <- absence_dfs[i]
@@ -781,12 +781,12 @@ for (i in 1:length(absence_dfs)){
 absences <-
   absences %>%
   mutate(date = as.Date(paste0(month, ' ',
-                               day, ' ', 
-                               year), 
+                               day, ' ',
+                               year),
                         format = '%B %d %Y')) %>%
   dplyr::select(parent_auri, date)
 # Bring in inteligible id numbers
-absences <- 
+absences <-
   absences %>%
   left_join(form_b_2_core %>%
               dplyr::select(combined_number, uri),
@@ -803,13 +803,13 @@ absences$absent = TRUE
 
 # We can now construct a dataset with ALL absences/presences
 # for all students in 2016
-attendance <- 
+attendance <-
   expand.grid(date = seq(as.Date('2016-02-01'),
                          as.Date('2016-04-30'),
                          by = 1),
               combined_number = sort(unique(students$combined_number)))
 # Bring in the school number
-attendance <- 
+attendance <-
   left_join(attendance,
             students %>%
               dplyr::select(combined_number, school_number),
@@ -839,14 +839,14 @@ attendance <-
 # "Absences" is the days they weren't at school
 # we assume days not flagged as absent were attended
 # Let's join
-attendance <- 
+attendance <-
   left_join(x = attendance,
             y = absences,
             by = c('date', 'combined_number')) %>%
   mutate(absent = ifelse(is.na(absent), FALSE, TRUE))
 
 # We no longer need days_off_df nor absences
-rm(days_off_df, absences, absence_dfs)
+# rm(days_off_df, absences, absence_dfs)
 
 # As of now we have three dataframes of interest for phase 2
 # 1. students = a roster
@@ -854,3 +854,4 @@ rm(days_off_df, absences, absence_dfs)
 # 3. attendance = a student-absence-presence paired set
 
 
+  
