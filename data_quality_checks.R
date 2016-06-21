@@ -16,6 +16,7 @@ so_far <-
   filter(found + not_found > 10) %>%
   dplyr::select(school_number)
 so_far <- as.character(unlist(so_far))
+
 # Plots
 x <- 
   attendance %>%
@@ -27,6 +28,20 @@ x <-
 ggplot(data = x,
        aes(x = year_month, y = rate)) +
   geom_bar(stat = 'identity', alpha = 0.6)
+
+# Do by school
+x <- 
+  attendance %>%
+  # Keep only those schools which have been collected so far
+  filter(school_number %in% so_far) %>%
+  mutate(year_month = as.Date(paste0(format(date, '%Y-%m'), '-01'))) %>%
+  group_by(year_month, school_number) %>%
+  summarise(rate = length(which(absent)) / n())
+ggplot(data = x,
+       aes(x = year_month, y = rate,
+           group = school_number, color = school_number)) +
+  geom_line(alpha = 0.6) +
+  geom_point()
 
 ## PHASE 1 CHECKS
 # School uniqueness (total of 25 schools)
