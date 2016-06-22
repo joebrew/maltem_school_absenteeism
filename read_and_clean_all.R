@@ -971,6 +971,22 @@ attendance <-
   attendance %>%
   filter(!format(date, '%m') %in% c('12', '01'))
 
+# Remove repetitions
+attendance <- attendance[!duplicated(attendance),]
+
+# Remove any of those students flagged as not having complete
+# absenteeism information for any period
+# In the following tables
+# form_b_2_core$absentism_info_absence_february
+# form_b_2_core$absentism_info_absence_march
+# form_b_2_core$absentism_info_absence_april
+# 1 = student found AND has been absent
+# 2 = student found AND has not been absent
+# 3 = no information on the student
+# If 3, we need to remove completely
+# AND student_found has to be equal to 1
+
+
 
 # As of now we have a few dataframes of interest for phase 2
 # 1. students = a roster

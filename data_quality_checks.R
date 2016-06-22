@@ -21,7 +21,7 @@ so_far <- as.character(unlist(so_far))
 x <- 
   attendance %>%
   # Keep only those schools which have been collected so far
-  filter(school_number %in% so_far) %>%
+  # filter(school_number %in% so_far) %>%
   mutate(year_month = as.Date(paste0(format(date, '%Y-%m'), '-01'))) %>%
   group_by(year_month) %>%
   summarise(rate = length(which(absent)) / n())
@@ -33,7 +33,7 @@ ggplot(data = x,
 x <- 
   attendance %>%
   # Keep only those schools which have been collected so far
-  filter(school_number %in% so_far) %>%
+  # filter(school_number %in% so_far) %>%
   mutate(year_month = as.Date(paste0(format(date, '%Y-%m'), '-01'))) %>%
   group_by(year_month, school_number) %>%
   summarise(rate = length(which(absent)) / n())
