@@ -1,5 +1,25 @@
 # First run "read_and_clean_all.R"
 
+# Can you send me please, for year and by month, the number of students for which we do have info and the number of classes? So I wanna know for how many classes we do have april 2015 as reference... and so. As well as total number of students for which we do have info for each month of year 2015.
+
+for_laia <-
+  attendance %>%
+  mutate(year_month = format(date, '%Y %m')) %>%
+  # Get class info
+  left_join(form_b_2_core %>%
+              dplyr::select(combined_number, 
+                            school_number,
+                            grade, 
+                            class) %>%
+              mutate(class_number = paste0('school:',
+                                           school_number, '-',
+                                           'grade:', grade, '-',
+                                           'class:', class)) %>%
+              dplyr::select(combined_number, class_number)) %>%
+  group_by(year_month) %>%
+  summarise(students = length(unique(combined_number)),
+            classes = length(unique(class_number)))
+
 # Get which schools have been collected so far
 so_far <-
   students %>%
