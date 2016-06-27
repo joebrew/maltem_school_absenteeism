@@ -1,5 +1,32 @@
 # First run "read_and_clean_all.R"
 
+# Absenteeism by month by class
+ad_hoc <-
+  attendance %>%
+  mutate(year_month = format(date, '%Y %m')) %>%
+  # Get class info
+  left_join(form_b_2_core %>%
+              dplyr::select(combined_number, 
+                            school_number,
+                            grade, 
+                            class) %>%
+              mutate(class_number = paste0('school:',
+                                           school_number, '-',
+                                           'grade:', grade, '-',
+                                           'class:', class))) %>%
+              # dplyr::select(combined_number, class_number)) %>%
+  mutate(district = substr(combined_number, 1, 2)) %>%
+  group_by(year_month, class_number) %>%
+  summarise(students = length(unique(combined_number)),
+            classes = length(unique(class_number)),
+            absences = length(which(absent)),
+            presences = length(which(!absent)),
+            student_school_days = n()) %>%
+  mutate(absenteeism_rate = absences / student_school_days * 100)
+
+# Write csv for laia
+write_csv(ad_hoc, '~/Desktop/monthly_absenteeism_by_class.csv')
+
 # Can you send me please, for year and by month, the number of students for which we do have info and the number of classes? So I wanna know for how many classes we do have april 2015 as reference... and so. As well as total number of students for which we do have info for each month of year 2015.
 
 for_laia <-
@@ -16,9 +43,14 @@ for_laia <-
                                            'grade:', grade, '-',
                                            'class:', class)) %>%
               dplyr::select(combined_number, class_number)) %>%
-  group_by(year_month) %>%
+  mutate(district = substr(combined_number, 1, 2)) %>%
+  group_by(year_month, district) %>%
   summarise(students = length(unique(combined_number)),
-            classes = length(unique(class_number)))
+            classes = length(unique(class_number)),
+            absences = length(which(absent)),
+            presences = length(which(!absent)),
+            student_school_days = n()) %>%
+  mutate(absenteeism_rate = absences / student_school_days * 100)
 
 # Get which schools have been collected so far
 so_far <-
