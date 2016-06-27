@@ -987,13 +987,16 @@ attendance <- attendance[!duplicated(attendance),]
 # AND student_found has to be equal to 1
 
 # Keep only these ids that meet the above conditions
-keep <- form_b_2_core %>%
-  filter(student_found == 1) %>%
-  dplyr::select(combined_number)
+# 
+# keep <- form_b_2_core %>%
+#   filter(student_found == 1) %>%
+#   dplyr::select(combined_number)
 
-attendance2 <- 
-  attendance %>%
-  filter(combined_number %in% keep$combined_number)
+# attendance2 <- attendance
+#   attendance %>%
+#   filter(combined_number %in% keep$combined_number)
+# Not doing the above for now
+attendance2 <- attendance
 
 # Flag month specific problems
 attendance2$flag <- FALSE
@@ -1003,7 +1006,8 @@ attendance2 <-
               dplyr::select(combined_number,
                             absentism_info_absence_february,
                             absentism_info_absence_march,
-                            absentism_info_absence_april))
+                            absentism_info_absence_april,
+                            student_found))
 
 attendance2$flag <-
   ifelse(format(attendance2$date, '%m-%Y') == '02-2016' &
@@ -1012,6 +1016,16 @@ attendance2$flag <-
                   !attendance2$absentism_info_absence_march %in% c(1, 2), TRUE,
                 ifelse(format(attendance2$date, '%m-%Y') == '04-2016' &
                          !attendance2$absentism_info_absence_april %in% c(1, 2), TRUE, attendance2$flag)))
+
+# Also flag modern entries that have not been found
+attendance2$flag <-
+  ifelse(format(attendance2$date, '%m-%Y') %in% c('02-2016',
+                                                 '03-2016',
+                                                 '04-2016') &
+           (attendance2$student_found != 1 |
+              is.na(attendance2$student_found)),
+         TRUE,
+         attendance2$flag)
 # Remove the flags
 attendance2 <- 
   attendance2 %>%
