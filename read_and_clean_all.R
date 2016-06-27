@@ -986,8 +986,39 @@ attendance <- attendance[!duplicated(attendance),]
 # If 3, we need to remove completely
 # AND student_found has to be equal to 1
 
+# Keep only these ids that meet the above conditions
+keep <- form_b_2_core %>%
+  filter(student_found == 1) %>%
+  dplyr::select(combined_number)
 
+attendance2 <- 
+  attendance %>%
+  filter(combined_number %in% keep$combined_number)
 
+# Flag month specific problems
+attendance2$flag <- FALSE
+attendance2 <- 
+  left_join(attendance2,
+            form_b_2_core %>%
+              dplyr::select(combined_number,
+                            absentism_info_absence_february,
+                            absentism_info_absence_march,
+                            absentism_info_absence_april))
+
+attendance2$flag <-
+  ifelse(format(attendance2$date, '%m-%Y') == '02-2016' &
+           !attendance2$absentism_info_absence_february %in% c(1, 2), TRUE,
+         ifelse(format(attendance2$date, '%m-%Y') == '03-2016' &
+                  !attendance2$absentism_info_absence_march %in% c(1, 2), TRUE,
+                ifelse(format(attendance2$date, '%m-%Y') == '04-2016' &
+                         !attendance2$absentism_info_absence_april %in% c(1, 2), TRUE, attendance2$flag)))
+# Remove the flags
+attendance2 <- 
+  attendance2 %>%
+  filter(!flag)
+# Overwrite attendance
+attendance <- attendance2
+rm(attendance2)
 # As of now we have a few dataframes of interest for phase 2
 # 1. students = a roster
 # 2. performance = the academic performance of each student
