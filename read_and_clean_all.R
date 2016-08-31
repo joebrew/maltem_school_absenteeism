@@ -1,5 +1,7 @@
 # TO DO
 
+# 0. Integrate corrections file
+
 # 1. CONSTRUCT DENOMINATORS FOR DIAS LECTIUS AND RECALCULATE ABSENTEEISM, DAYS OFF, ETC.
 # - Before February 2016, uses form a 2 days off, these are dias FERIADOS (b = 2016, but ignore)
 # --- tot a nivell de escola
@@ -13,6 +15,14 @@
 # 2. MERGE (DIRECT AND INDIRECT) WITH CENSUS
 
 # 3. PROFESSORS
+# everything is contained in form c 2
+# formc2 = april 2015-2016
+# a = 2015; b = 2016
+# the numerator is if they missed days
+# form_c_2_absenteeism_info_days_absent_<month>
+# the denominator is form_a_2_days_off_<month>
+# no may and june
+
 
 # Packages
 library(ggthemes)
@@ -1036,8 +1046,8 @@ attendance2$flag <-
 # Also flag modern entries that have not been found
 attendance2$flag <-
   ifelse(format(attendance2$date, '%m-%Y') %in% c('02-2016',
-                                                 '03-2016',
-                                                 '04-2016') &
+                                                  '03-2016',
+                                                  '04-2016') &
            (attendance2$student_found != 1 |
               is.na(attendance2$student_found)),
          TRUE,
@@ -1049,6 +1059,31 @@ attendance2 <-
 # Overwrite attendance
 attendance <- attendance2
 rm(attendance2)
+
+save.image('~/Desktop/temp.RData')
+
+######################################################
+# Bring in corrections data
+library(readxl)
+results_list <- list()
+for (i in 1:24){ # not doing row 25, since we don't have corrections for that
+  message(paste0('Working on school ', i))
+  # Read in the data
+  this_school <- suppressMessages(read_excel('corrections/Duplicados_Aug 2016.xls',
+                                             sheet = paste0('school_', i)))
+  this_school <- data.frame(this_school)
+  message(paste0('Rows :', nrow(this_school)))
+  
+  # Identify which row has the correct stuff
+  start_here <- which(this_school$NAME == 'NAME') + 1
+  # Subset
+  this_school <- this_school[start_here:nrow(this_school),]
+  # Add to results
+  results_list[[i]] <- this_school
+}
+the_binder <- plyr::rbind.fill
+corrections <- do.call('the_binder', results_list)
+rm(results_list, the_binder, this_school, i, start_here)
 
 ######################################################
 # Bring in census data
@@ -1220,5 +1255,3 @@ x <- left_join(x = students,
 # 3. attendance = a student-absence-presence paired set (both phase 1 and 2)
 # 4. days_off_df = which non-lectivo days each school had
 # 5. census
-
-# PROFESSORS
