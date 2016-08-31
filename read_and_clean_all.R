@@ -1,6 +1,6 @@
 # TO DO
 
-# 0. Integrate corrections file
+# 0. Integrate corrections file - DONE!
 
 # 1. CONSTRUCT DENOMINATORS FOR DIAS LECTIUS AND RECALCULATE ABSENTEEISM, DAYS OFF, ETC.
 # - Before February 2016, uses form a 2 days off, these are dias FERIADOS (b = 2016, but ignore)
@@ -1069,8 +1069,8 @@ results_list <- list()
 for (i in 1:24){ # not doing row 25, since we don't have corrections for that
   message(paste0('Working on school ', i))
   # Read in the data
-  this_school <- suppressMessages(read_excel('corrections/Duplicados_Aug 2016.xls',
-                                             sheet = paste0('school_', i)))
+  this_school <- read_excel('corrections/Duplicados_Aug 2016.xls',
+                            sheet = paste0('school_', i))
   this_school <- data.frame(this_school)
   message(paste0('Rows :', nrow(this_school)))
   
@@ -1078,14 +1078,163 @@ for (i in 1:24){ # not doing row 25, since we don't have corrections for that
   start_here <- which(this_school$NAME == 'NAME') + 1
   # Subset
   this_school <- this_school[start_here:nrow(this_school),]
+  # Make everything character
+  for (j in 1:ncol(this_school)){
+    this_school[,j] <- as.character(this_school[,j])
+  }
   # Add to results
   results_list[[i]] <- this_school
 }
 the_binder <- plyr::rbind.fill
 corrections <- do.call('the_binder', results_list)
 rm(results_list, the_binder, this_school, i, start_here)
+# Make date correct
+corrections$dobs <- as.Date(as.numeric(corrections$dobs), origin = '1900-01-01') # excel
+# Make grade numeric
+corrections$grades <- as.numeric(as.character(corrections$grades))
+# Get rid of garbage rows
+corrections <- corrections %>%
+  filter(!is.na(NAME),
+         !is.na(permids))
+
+# Go through and make corrections
+# Create new row templates
+# new_student <- students[0,]
+# new_performance <- performance[0,]
+# new_attendance <- attendance[0,]
+
+# Get reference months
+reference_months <-
+  form_c_core %>%
+              dplyr::select(class_uuid,
+                            name, 
+                            dob,
+                            permid) %>%
+  # Get the actual months from each student's turma
+  left_join(form_b_core %>%
+              dplyr::select(class_uuid,
+                            first_month_of_reference,
+                            second_month_of_reference,
+                            third_month_of_reference),
+            by = 'class_uuid')
+
+# Give attendance some months, etc.
+attendance <- 
+  attendance %>%
+  mutate(day = as.numeric(format(date, '%d')),
+         month = as.numeric(format(date, '%m')))
+
+for (i in 1:nrow(corrections)){
+  
+  # Get the correction row
+  this_correction <- corrections[i,]
+  
+  # Specify who
+  this_student <- this_correction$NAME
+  this_id <- this_correction$permids
+  
+  message('Working on corrections for ', this_student)
+  
+  # Capture old data
+  old_student <- students %>%
+    filter(PERMID == this_id,
+           NAME == this_student)
+  old_student <- old_student[1,]
+  this_combined_number <- old_student$combined_number
+  
+  if(!is.na(this_combined_number) &
+     !is.na(this_student) &
+     !is.na(this_id)){
+    
+    # Correct the old student entry
+    old_student$NAME <- this_student
+    if(!is.na(this_correction$name_schools)){
+      old_student$SCHOOL_NAME <- this_correction$name_schools
+    }
+    if(!is.na(this_correction$dobs)){
+      old_student$DOB <- this_correction$dobs
+    }
+    if(!is.na(this_correction$grades)){
+      old_student$GRADE <- this_correction$grades
+    }
+    if(!is.na(this_correction$class_names)){
+      old_student$CLASS_NAME <- as.character(this_correction$class_names)
+    }
+    
+    # Corret the old attendance issue
+    these_absences <- this_correction %>%
+      dplyr::select(first_months,
+                    second_months,
+                    third_months) %>% as.character
+    
+    # Get reference months
+    this_reference <- 
+      reference_months %>%
+      filter(name == this_student) %>%
+      dplyr::select(contains('month_of_reference'))
+    this_reference <- as.numeric(this_reference[1,]) 
+    
+    # Get absences each reference months
+    
+    old_attendance <- attendance %>%
+      filter(combined_number == this_combined_number) 
+    # Loop through each month and correct accordingly
+    for(j in 1:length(this_reference)){
+      this_month <- this_reference[j]
+      if(!is.na(this_month)){
+        absences_this_month <- as.numeric(unlist(strsplit(these_absences[j], 
+                                                          '|', fixed = TRUE)))
+        absences_this_month <- absences_this_month[!is.na(absences_this_month)]
+        # Assign all as non absences
+        old_attendance$absent[old_attendance$month == this_month] <- FALSE
+        
+        # Assign new/corrected absences
+        if(length(absences_this_month) > 0){
+          old_attendance$absent[old_attendance$month == this_month &
+                                  old_attendance$day %in% absences_this_month] <- TRUE 
+        }  
+      }
+    }
+    
+    # Remove the old (incorrect) entry from the students dataframe
+    students <-
+      students %>%
+      mutate(remove = (PERMID == this_id & NAME == this_student)) %>%
+      filter(!remove) %>%
+      dplyr::select(-remove)
+    # Replace with the new stuff
+    students <- rbind(students, old_student)
+    # Remove the old (incorrect) entries from the attendance dataframe
+    before <- nrow(attendance)
+    attendance <-
+      attendance %>%
+      mutate(remove = combined_number == this_combined_number) %>%
+      filter(!remove) %>%
+      dplyr::select(-remove)
+    after <- nrow(attendance)
+    paste0(message('Just removed ', before - after, ' rows from attendance.'))
+    attendance <- rbind(attendance, old_attendance)
+    # message('Done!')
+  }
+}
+
+save.image('~/Desktop/temp2.RData')
+######################################################
 
 ######################################################
+# CONSTRUCT DENOMINATORS FOR DIAS LECTIUS AND RECALCULATE ABSENTEEISM, DAYS OFF, ETC.
+# - Before February 2016, uses form a 2 days off, these are dias FERIADOS (b = 2016, but ignore) -- this was already done
+# --- tot a nivell de escola
+# - February-June 2016 uses form a 3, these are not FERIADOS, the are LECTIUS
+# --- tot a nivell de turma/class
+# In the above, any month which is not "complete" gets no data at all
+# For May/June 2016, the true feriados days are in 
+# ---form_a_3_class_room_may_info_no
+# ---form_a_3_class_room_may_info_no
+
+
+
+
 # Bring in census data
 
 # Magude  ----------------------------------------------------------
