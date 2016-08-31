@@ -687,55 +687,56 @@ performance <-
 # SCHOOL LEVEL ----------------------------------------------------------
 # For each school from form a, get the days where class was held
 
-# Get all of days off into one dataframe
+# Get all of days off into one dataframe for 2015
 days_off <-
   c("form_a_2_days_off_april",
-    "form_a_2_days_off_april_b",
+    # "form_a_2_days_off_april_b",
     "form_a_2_days_off_august",
-    "form_a_2_days_off_february_b",
+    # "form_a_2_days_off_february_b",
     "form_a_2_days_off_july",
     "form_a_2_days_off_june",
-    "form_a_2_days_off_march_b",
+    # "form_a_2_days_off_march_b",
     "form_a_2_days_off_may",
     "form_a_2_days_off_november",
     "form_a_2_days_off_october",
     "form_a_2_days_off_september")
 keys <- c('April 2015',
-          'April 2016',
+          # 'April 2016',
           'August 2015',
-          'February 2016',
+          # 'February 2016',
           'July 2015',
           'June 2015',
-          'March 2016',
+          # 'March 2016',
           'May 2015',
           'November 2015',
           'October 2015',
           'September 2015')
 months <- c('April',
-            'April',
+            # 'April',
             'August',
-            'February',
+            # 'February',
             'July',
             'June',
-            'March',
+            # 'March',
             'May',
             'November',
             'October',
             'September')
 years <- c(2015,
-           2016,
+           # 2016,
            2015,
-           2016,
+           # 2016,
            2015,
            2015,
-           2016,
+           # 2016,
            2015,
            2015,
            2015,
            2015)
+save.image('~/Desktop/temp0.RData')
 days_off_df <- data.frame(form_a_2_days_off_april)[0,]
 for (i in 1:length(days_off)){
-  x <- get('form_a_2_days_off_april')
+  x <- get(days_off[i])
   x$src <- days_off[i]
   names(x)[9] <- 'days_off'
   x$month_year <- keys[i]
@@ -744,6 +745,103 @@ for (i in 1:length(days_off)){
   days_off_df <- rbind(days_off_df,
                        x)
 }
+
+# Now get all days on for 2016
+# - February-June 2016 uses form a 3, these are not FERIADOS, the are LECTIUS
+# --- tot a nivell de turma/class
+# In the above, any month which is not "complete" gets no data at all
+# For May/June 2016, the true feriados days are in 
+# ---form_a_3_class_room_may_info_no
+# ---form_a_3_class_room_may_info_no
+days_on_2016 <- c('form_a_3_class_room_fev_info_if_no',
+                   'form_a_3_class_room_march_info_no',
+                   'form_a_3_class_room_april_info_no',
+                   'form_a_3_class_room_may_info_no',
+                   'form_a_3_class_room_jun_info_no')
+keys <- c('February 2016',
+          'March 2016',
+          'April 2016',
+          'May 2016',
+          'June 2016')
+months <- c('February',
+            'March', 
+            'April',
+            'May',
+            'June')
+years <- rep(2016, 5)
+days_on_df_2016 <- data.frame(form_a_2_days_off_april)[0,]
+for (i in 1:length(days_on_2016)){
+  x <- get(days_on_2016[i])
+  x$src <- days_on_2016[i]
+  names(x)[9] <- 'days_on'
+  x$month_year <- keys[i]
+  x$month <- months[i]
+  x$year <- years[i]
+  days_on_df_2016 <- rbind(days_on_df_2016,
+                       x)
+}
+# Get classroom info
+days_on_df_2016 <-
+  days_on_df_2016 %>%
+  left_join(form_a_3_core %>%
+              dplyr::select(uri,
+                            class_room_grade,
+                            class_room_class,
+                            class_room_school_code),
+            by = c('parent_auri' = 'uri')) 
+month_matcher <- data.frame(
+  month_name = c('February', 'March', 'April', 'May', 'June'),
+  month_number = 2:6
+)
+days_on_df_2016 <- left_join(days_on_df_2016, month_matcher,
+                             by = c('month' = 'month_name'))
+days_on_df_2016$date <-
+  as.Date(paste0(days_on_df_2016$year, '-',
+                 days_on_df_2016$month_number, '-',
+                 days_on_df_2016$days_on))
+days_on_df_2016 <-
+  days_on_df_2016 %>%
+  rename(grade = class_room_grade,
+         class = class_room_class,
+         school_number = class_room_school_code)
+# NEED TO SUBSET days_on_df_2016 SO AS TO ONLY KEEP 
+# DAYS FOR WHICH INFO WAS COMPLETE AND CORRECT
+
+# unique_turmas <- 
+#   days_on_df_2016 %>%
+#   group_by(grade = class_room_grade,
+#            class = class_room_class,
+#            school_number = class_room_school_code) %>% 
+#   tally %>%
+#   dplyr::select(-n)
+# days_off_list_2016 <- list()
+# for (i in 1:nrow(unique_turmas)){
+#   print(i)
+#   this_class <- unique_turmas[i,]
+#   days_on <- days_on_df_2016 %>%
+#     filter(class_room_grade == this_class$grade,
+#            class_room_class == this_class$class,
+#            class_room_school_code == this_class$school_number,
+#            !is.na(date))
+#   date_range <- range(days_on$date, na.rm = TRUE)
+#   dates <- seq(min(date_range),
+#                max(date_range),
+#                by = 1)
+#   # Remove the on days
+#   dates <- dates[!dates %in% sort(unique(days_on$date))]
+#   dates <- dates[!is.na(dates)]
+#   if(length(dates) > 0){
+#     results <- list()
+#     for (j in 1:length(dates)){
+#       this_entry <- this_class
+#       this_entry$date <- dates[j]
+#       results[[j]] <- this_entry
+#     }
+#     these_rows <- do.call('rbind', results)
+#     days_off_list_2016[[j]] <- these_rows
+#   }
+# }
+# days_off_df_2016 <- do.call('rbind', days_off_list_2016)
 
 # Create an actual date column
 days_off_df$date <-
@@ -779,8 +877,9 @@ days_off_df <- days_off_df %>%
 
 # As of now we have three dataframes of interest
 # 1. students = a roster
-# 2. days_off_df = a dataframe of each schools days off
+# 2. days_off_df = a dataframe of each schools days off (for 2015 data)
 # 3. performance = the academic performance of each student
+# 4. days_off_df_2016 = a dataframe of each classes day off (for 2016 data)
 
 # Now create an ABSENCES dataframe ---------
 # b_2 = students
@@ -790,13 +889,15 @@ days_off_df <- days_off_df %>%
 absence_dfs <-
   c('form_b_2_absentism_info_days_absent_february',
     'form_b_2_absentism_info_days_absent_march',
-    'form_b_2_absentism_info_days_absent_april')
+    'form_b_2_absentism_info_days_absent_april',
+    'form_b_3_students_may_fault_2016_yes',
+    'form_b_3_students_jun_fault_2016_yes')
 absences <- form_b_2_absentism_info_days_absent_april
 names(absences)[9] <- 'day'
 absences$src <- absences$month <- absences$year <-  NA
 absences <- absences[0,]
-months <- c('February', 'March', 'April')
-years <- c(2016, 2016, 2016)
+months <- c('February', 'March', 'April', 'May', 'June')
+years <- rep(2016, 5)
 for (i in 1:length(absence_dfs)){
   this_month <-
     get(absence_dfs[i])
@@ -830,39 +931,66 @@ absences$absent = TRUE
 # 2. days_off_df = a dataframe of each schools days off
 # 3. performance = the academic performance of each student
 # 4. absences = a student-absence paired set
+# 5. days_on_df_2016 = a dataframe of eligible school days for 2016
 
 # We can now construct a dataset with ALL absences/presences
 # for all students in 2016
 attendance <-
   expand.grid(date = seq(as.Date('2016-02-01'),
-                         as.Date('2016-04-30'),
+                         as.Date('2016-06-30'),
                          by = 1),
               combined_number = sort(unique(students$combined_number)))
 # Bring in the school number
 attendance <-
   left_join(attendance,
             students %>%
-              dplyr::select(combined_number, school_number),
-            by = 'combined_number')
+              dplyr::select(combined_number, 
+                            school_number,
+                            GRADE,
+                            CLASS_NAME),
+            by = 'combined_number') %>%
+  rename(grade = GRADE,
+         class = CLASS_NAME)
 # Flag weekends and remove
 attendance$dow <- weekdays(attendance$date)
 attendance <- attendance %>%
   filter(dow != 'Saturday',
          dow != 'Sunday')
-# Flag those no lectivo days from each school
-attendance <-
-  attendance %>%
-  mutate(school_number = as.numeric(as.character(school_number))) %>%
-  left_join(days_off_df %>%
-              mutate(school_number = as.numeric(as.character(school))) %>%
-              dplyr::select(school_number, date) %>%
-              mutate(no_lectivo = TRUE),
-            by = c('date', 'school_number')) %>%
-  mutate(no_lectivo = ifelse(is.na(no_lectivo), FALSE,
-                             no_lectivo)) %>%
-  # Remove the no lectivo days
-  filter(!no_lectivo) %>%
-  dplyr::select(-dow, -no_lectivo)
+
+# Only keep those days explicitly declared as lectiu
+
+unique_turmas <-
+  days_on_df_2016 %>%
+  group_by(grade,
+           class,
+           school_number) %>%
+  tally %>%
+  dplyr::select(-n)
+
+attendance$remove <- FALSE
+for(i in 1:nrow(unique_turmas)){
+  print(i)
+  this_turma <- unique_turmas[i,]
+  days_on <- days_on_df_2016 %>%
+    filter(grade == this_turma$grade,
+           class == this_turma$class,
+           school_number == this_turma$school_number) %>%
+    dplyr::select(date)
+  days_on <- sort(unique(days_on$date))
+  
+  flag_these <-
+    which(attendance$grade == this_turma$grade &
+            attendance$class == this_turma$class &
+            attendance$school_number == this_turma$school_number &
+            !attendance$date  %in% days_on)
+  
+  if(length(flag_these) > 0){
+    attendance$remove[flag_these] <- TRUE
+  }
+}
+attendance <- attendance %>%
+  filter(!remove) %>%
+  dplyr::select(-remove)
 
 # "Attendnance" is the days they SHOULD have been at
 # school
