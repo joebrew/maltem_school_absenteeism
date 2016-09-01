@@ -682,10 +682,111 @@ performance <-
   dplyr::select(-gender,
                 -student_number,
                 -school_number)
-
+save.image('~/Desktop/tempx.RData')
 
 # SCHOOL LEVEL ----------------------------------------------------------
-# For each school from form a, get the days where class was held
+
+
+# Get a list of all classes for 2016
+days_2016 <-form_a_3_core[,c('uri', 
+                             names(form_a_3_core[grepl('class_room', names(form_a_3_core)) &
+                                                   !grepl('reason|administative|data|district', names(form_a_3_core))]))]
+names(days_2016) <- gsub('class_room_', '', names(days_2016))
+days_2016 <- 
+  days_2016 %>%
+  dplyr::rename(school_number = school_code)
+days_2016 <- days_2016[,unique(c('school_number', 'grade', 'class', sort(names(days_2016))))]
+
+# Gather into month
+days_2016 <- 
+  days_2016 %>%
+  gather(key, value, april_info:may_info_yes)
+
+# Restructure a bit
+days_2016 <- left_join(x = days_2016 %>%
+                 filter(grepl('yes', key)) %>%
+                 rename(info_yes = value) %>%
+                   dplyr::select(-key),
+               y = days_2016 %>%
+                 filter(!grepl('yes', 'key')) %>%
+                 rename(info = value)  %>%
+  mutate(month = unlist(lapply(strsplit(key, split = '_'), function(x){unlist(x)[1]}))) %>%
+    dplyr::select(-key),
+  year = 2016)
+  
+
+# Apply Laia's algorithm
+days_2016 <-
+  days_2016 %>%
+  mutate(action = ifelse(month %in% c('fev', 
+                                      'march', 
+                                      'april') &
+                           info == 1 &
+                           info_yes == 2,
+                         'use form_a_3_class_room_month_info_if_no',
+                         ifelse(month %in% c('fev', 
+                                             'march', 
+                                             'april') &
+                                  info == 1 &
+                                  info_yes == 1,
+                                'use form_a_2_days_off_month',
+                                ifelse(month %in% c('may', 'jun') &
+                                         info == 1 &
+                                         info_yes == 1,
+                                       'create from scratch',
+                                       ifelse(month %in% c('may', 'jun') &
+                                                info == 2,
+                                              'not usable',
+                                              NA)))))
+
+# ! THIS IS WHERE I AM NOT FINISHED
+
+# Create a days on 2016 class-date pairing dataframe using the above algorithm
+days_on <- data.frame(year = NA,
+                      month = NA,
+                      day = NA,
+                      date = NA,
+                      school_number = NA,
+                      grade = NA,
+                      class = NA)
+days_on <- days_on[0,]
+
+for (i in 1:nrow(days_2016)){
+  this_school_month <- 
+    days_2016[i,] %>% 
+    dplyr::select(school_number, grade, class, action, uri)
+  if(this_school_month$action == 'not usable'){
+    # Do nothing
+  } else if(this_school_month$action == 'create_from_scratch'){
+    
+  } else if(this_school_month$action == 'use form_a_2_days_off_month'){
+    
+  } else if(this_school_month$action == 'use form_a_3_class_room_month_info_if_no')
+}
+
+
+if(months[i] %in% c('February', 'March', 'April')){
+  x <-
+    x %>%
+    mutate(action = ifelse(info == 1 &
+                             info_yes == 2, 'ok as is',
+                           ifelse(info == 1 & info_yes == 1,
+                                  paste0('get from ', 
+                                         'form_a_2_days_off_',
+                                         tolower(months[i]),
+                                         '_b'),
+                                  NA)))
+} else {
+  x <-
+    x %>%
+    mutate(action = ifelse(info == 1 &
+                             info_yes == 1, 'manual create non-lective days',
+                           ifelse(info == 2,
+                                  'remove all',
+                                  NA)))
+}
+
+
 
 # Get all of days off into one dataframe for 2015
 days_off <-
@@ -733,7 +834,6 @@ years <- c(2015,
            2015,
            2015,
            2015)
-save.image('~/Desktop/temp0.RData')
 days_off_df <- data.frame(form_a_2_days_off_april)[0,]
 for (i in 1:length(days_off)){
   x <- get(days_off[i])
@@ -746,13 +846,12 @@ for (i in 1:length(days_off)){
                        x)
 }
 
+save.image('~/Desktop/temp0.RData')
+
+# NEED TO START WITH FORM A 3 CORE
+
+
 # Now get all days on for 2016
-# - February-June 2016 uses form a 3, these are not FERIADOS, the are LECTIUS
-# --- tot a nivell de turma/class
-# In the above, any month which is not "complete" gets no data at all
-# For May/June 2016, the true feriados days are in 
-# ---form_a_3_class_room_may_info_no
-# ---form_a_3_class_room_may_info_no
 days_on_2016 <- c('form_a_3_class_room_fev_info_if_no',
                    'form_a_3_class_room_march_info_no',
                    'form_a_3_class_room_april_info_no',
@@ -768,6 +867,9 @@ months <- c('February',
             'April',
             'May',
             'June')
+month_short <- c('fev_info_if', 'march_info', 'april_info', 'may_info', 'jun_info')
+month_short_b <- c('fev', 'march', 'april', 'may', 'jun')
+
 years <- rep(2016, 5)
 days_on_df_2016 <- data.frame(form_a_2_days_off_april)[0,]
 for (i in 1:length(days_on_2016)){
@@ -777,6 +879,41 @@ for (i in 1:length(days_on_2016)){
   x$month_year <- keys[i]
   x$month <- months[i]
   x$year <- years[i]
+  # Get the classroom info
+  x <- left_join(x, 
+                 form_a_3_core %>%
+                   dplyr::select_('uri',
+                                 paste0('class_room_', 
+                                        month_short[i],
+                                        '_yes'),
+                                 paste0('class_room_',
+                                        month_short_b[i], 
+                                        '_info')),
+                 by = c('parent_auri' = 'uri'))
+  names(x)[15:16] <- c('info_yes', 'info')
+  # Follow Laia's algorithm
+  if(months[i] %in% c('February', 'March', 'April')){
+    x <-
+      x %>%
+      mutate(action = ifelse(info == 1 &
+                               info_yes == 2, 'ok as is',
+                             ifelse(info == 1 & info_yes == 1,
+                                    paste0('get from ', 
+                                           'form_a_2_days_off_',
+                                           tolower(months[i]),
+                                           '_b'),
+                                    NA)))
+  } else {
+    x <-
+      x %>%
+      mutate(action = ifelse(info == 1 &
+                               info_yes == 1, 'manual create non-lective days',
+                             ifelse(info == 2,
+                                    'remove all',
+                                    NA)))
+  }
+
+  
   days_on_df_2016 <- rbind(days_on_df_2016,
                        x)
 }
