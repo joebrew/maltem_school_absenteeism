@@ -702,42 +702,53 @@ days_2016 <-
   days_2016 %>%
   gather(key, value, april_info:may_info_yes)
 
+
 # Restructure a bit
-days_2016 <- left_join(x = days_2016 %>%
-                 filter(grepl('yes', key)) %>%
-                 rename(info_yes = value) %>%
-                   dplyr::select(-key),
-               y = days_2016 %>%
-                 filter(!grepl('yes', 'key')) %>%
-                 rename(info = value)  %>%
-  mutate(month = unlist(lapply(strsplit(key, split = '_'), function(x){unlist(x)[1]}))) %>%
+days_2016 <- left_join(
+  # Yesses only
+  x = days_2016 %>%
+    dplyr::select(uri, key, value) %>%
+    filter(grepl('yes', key)) %>%
+    rename(info_yes = value) %>%
+    mutate(month = gsub('_info_yes|_info_if_yes', '', key)) %>%
     dplyr::select(-key),
-  year = 2016)
-  
+  y = days_2016 %>%
+    filter(!grepl('yes', key)) %>%
+    rename(info = value)  %>%
+    mutate(month = unlist(lapply(strsplit(key, split = '_'), function(x){unlist(x)[1]}))) %>%
+    dplyr::select(-key)) %>%
+  dplyr::select(school_number, grade, class, month, info, info_yes, uri) %>%
+  arrange(school_number, grade, class, month)
 
 # Apply Laia's algorithm
 days_2016 <-
   days_2016 %>%
-  mutate(action = ifelse(month %in% c('fev', 
-                                      'march', 
-                                      'april') &
-                           info == 1 &
-                           info_yes == 2,
-                         'use form_a_3_class_room_month_info_if_no',
-                         ifelse(month %in% c('fev', 
-                                             'march', 
-                                             'april') &
-                                  info == 1 &
-                                  info_yes == 1,
-                                'use form_a_2_days_off_month',
-                                ifelse(month %in% c('may', 'jun') &
-                                         info == 1 &
-                                         info_yes == 1,
-                                       'create from scratch',
-                                       ifelse(month %in% c('may', 'jun') &
-                                                info == 2,
-                                              'not usable',
-                                              NA)))))
+  mutate(action = ifelse(info == 2, 'not usable',
+                         #
+                         ifelse(
+                           month %in% c('fev', 
+                                        'march', 
+                                        'april') &
+                             info == 1 &
+                             info_yes == 2,
+                           'use form_a_3_class_room_month_info_if_no',
+                           #
+                           ifelse(month %in% c('fev', 
+                                               'march', 
+                                               'april') &
+                                    info == 1 &
+                                    info_yes == 1,
+                                  'use form_a_2_days_off_month',
+                                  #
+                                  ifelse(month %in% c('may', 'jun') &
+                                           info == 1 &
+                                           info_yes == 1,
+                                         'use form_a_2_days_off_month',
+                                         ifelse(month %in% c('may', 'jun') &
+                                                  info == 1 &
+                                                  info_yes == 2,
+                                                'create from scratch',
+                                         NA))))))
 
 # ! THIS IS WHERE I AM NOT FINISHED
 
