@@ -686,7 +686,6 @@ save.image('~/Desktop/tempx.RData')
 
 # SCHOOL LEVEL ----------------------------------------------------------
 
-
 # Get a list of all classes for 2016
 days_2016 <-form_a_3_core[,c('uri', 
                              names(form_a_3_core[grepl('class_room', names(form_a_3_core)) &
@@ -750,6 +749,40 @@ days_2016 <-
                                                 'create from scratch',
                                          NA))))))
 
+# Recode month
+days_2016 <-
+  days_2016 %>%
+  left_join(data.frame(month = c('fev', 
+                                 'march',
+                                 'april',
+                                 'may',
+                                 'jun'),
+                       month_number = 2:6),
+            by = 'month') %>%
+  left_join(data.frame(month = c('fev', 
+                                 'march',
+                                 'april',
+                                 'may',
+                                 'jun'),
+                       month_symbol = c('february_b',
+                                        'march_b',
+                                        'april_b',
+                                        'may',
+                                        'june')
+                       ))
+
+# Adjust dataframe names for consistency
+changers <- ls()[grepl('info_no|if_no', ls())]
+for (i in 1:length(changers)){
+  new_name <- changers[i]
+  new_name <- gsub('info_no|if_no', 'info_if_no', new_name)
+  the_data <- get(changers[i])
+  rm(list = changers[i])
+  assign(new_name,
+         the_data)
+}
+rm(changers)
+
 # ! THIS IS WHERE I AM NOT FINISHED
 
 # Create a days on 2016 class-date pairing dataframe using the above algorithm
@@ -763,16 +796,30 @@ days_on <- data.frame(year = NA,
 days_on <- days_on[0,]
 
 for (i in 1:nrow(days_2016)){
+  # Get the turma-pair in question
   this_school_month <- 
     days_2016[i,] %>% 
-    dplyr::select(school_number, grade, class, action, uri)
+    dplyr::select(school_number, grade, class, action, uri, month_number, month_symbol)
+  
+  # Flow for creating new rows
   if(this_school_month$action == 'not usable'){
     # Do nothing
-  } else if(this_school_month$action == 'create_from_scratch'){
+  } else if(this_school_month$action == 'create from scratch'){
+    # Not done yet
     
   } else if(this_school_month$action == 'use form_a_2_days_off_month'){
+    # Get the appropriate entries
+    entries <- get(paste0('form_a_2_days_off_', 
+                          this_school_month$month_symbol)) %>%
+      filter(top_level_auri == this_school_month$uri) %>%
+      dplyr::select(contains('off'))
+    print(i)
+    print(nrow(entries))
+    # ERRORS HERE - can't find any matches for the top_level or parent_auri
     
-  } else if(this_school_month$action == 'use form_a_3_class_room_month_info_if_no')
+  } else if(this_school_month$action == 'use form_a_3_class_room_month_info_if_no'){
+    # Not done yet
+  }
 }
 
 
