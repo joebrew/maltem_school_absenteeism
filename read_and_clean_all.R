@@ -811,7 +811,14 @@ for (i in 1:nrow(days_2016)){
     # Get the appropriate entries
     entries <- get(paste0('form_a_2_days_off_', 
                           this_school_month$month_symbol)) %>%
-      filter(top_level_auri == this_school_month$uri) %>%
+      # Drop the turma-specific uri
+      dplyr::select(-uri) %>%
+      # Get the school specific uri
+      left_join(form_a_2_core %>%
+                  dplyr::select(uri, school),
+                by = c('parent_auri' = 'uri')) %>%
+      # Keep only those from this school
+      filter(school == this_school_month$school_number) %>%
       dplyr::select(contains('off'))
     print(i)
     print(nrow(entries))
@@ -820,28 +827,6 @@ for (i in 1:nrow(days_2016)){
   } else if(this_school_month$action == 'use form_a_3_class_room_month_info_if_no'){
     # Not done yet
   }
-}
-
-
-if(months[i] %in% c('February', 'March', 'April')){
-  x <-
-    x %>%
-    mutate(action = ifelse(info == 1 &
-                             info_yes == 2, 'ok as is',
-                           ifelse(info == 1 & info_yes == 1,
-                                  paste0('get from ', 
-                                         'form_a_2_days_off_',
-                                         tolower(months[i]),
-                                         '_b'),
-                                  NA)))
-} else {
-  x <-
-    x %>%
-    mutate(action = ifelse(info == 1 &
-                             info_yes == 1, 'manual create non-lective days',
-                           ifelse(info == 2,
-                                  'remove all',
-                                  NA)))
 }
 
 
