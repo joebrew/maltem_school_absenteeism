@@ -790,8 +790,6 @@ for (i in 1:length(changers)){
 }
 rm(changers)
 
-# ! THIS IS WHERE I AM NOT FINISHED
-
 # Create a vector of 2016 dates
 dates_2016 <- seq(as.Date('2016-01-01'),as.Date('2016-12-31'), by = 1)
 
@@ -1100,11 +1098,32 @@ absences$absent = TRUE
 
 
 # THIS IS WHERE I AM WORKING RIGHT NOW
-attendance <-
-  left_join(x = days_2016,
-            y = students %>%
-              dplyr::select(school_number,))
 
+# Get student class/grade info into absences
+absences <-
+  left_join(
+    x = absences,
+    y = form_b_3_core %>%
+      dplyr::select(students_student_number,
+                    students_grade,
+                    students_class) %>%
+      rename(combined_number = students_student_number,
+             grade = students_grade,
+             class = students_class) %>%
+      # Make student number have a leading 0
+      mutate(combined_number = paste0('0', combined_number)) %>%
+      # Make things numeric
+      mutate(grade = as.numeric(as.character(grade))) %>%
+      # Get the school number
+      mutate(school_number = as.numeric(unlist(lapply(strsplit(combined_number, 
+                                                               '-'), 
+                                                      function(x){x[1]}))))
+  )
+
+# Remove all students from whom we don't have turma info
+absences <-
+  absences %>%
+  filter(!is.na(grade))
 
 attendance <-
   expand.grid(date = seq(as.Date('2016-02-01'),
@@ -1150,9 +1169,14 @@ attendance <- attendance %>% filter(!is.na(keep)) %>%
 # Let's join
 attendance <-
   left_join(x = attendance,
-            y = absences,
+            y = absences %>%
+              dplyr::select(date, combined_number, absent),
             by = c('date', 'combined_number')) %>%
   mutate(absent = ifelse(is.na(absent), FALSE, TRUE))
+
+save.image('~/Desktop/temp_today.RData')
+
+# Remove all of those NA students
 
 ########################## CLEAN UP PERFORMANCE
 # Clean up performance
