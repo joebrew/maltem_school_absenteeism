@@ -726,35 +726,36 @@ days_2016 <- left_join(
   dplyr::select(school_number, grade, class, month, info, info_yes, uri) %>%
   arrange(school_number, grade, class, month)
 
+
+
 # Apply Laia's algorithm
 days_2016 <-
   days_2016 %>%
   mutate(action = ifelse(info == 2, 'not usable',
                          #
                          ifelse(
-                           month %in% c('fev', 
-                                        'march', 
-                                        'april') &
                              info == 1 &
                              info_yes == 2,
+                             # USE LECTIVE DAYS
                            'use form_a_3_class_room_month_info_if_no',
-                           #
                            ifelse(month %in% c('fev', 
                                                'march', 
                                                'april') &
                                     info == 1 &
                                     info_yes == 1,
+                                  # NON LECTIVE DAYS
                                   'use form_a_2_days_off_month',
                                   #
                                   ifelse(month %in% c('may', 'jun') &
                                            info == 1 &
                                            info_yes == 1,
-                                         'use form_a_2_days_off_month',
-                                         ifelse(month %in% c('may', 'jun') &
-                                                  info == 1 &
-                                                  info_yes == 2,
-                                                'create from scratch',
-                                         NA))))))
+                                         'create from scratch',
+                                         NA)))))
+
+# After applying this algorithm, revisar form_a_2_days_off_month
+# See how many unique days off there are for each school-month to ensure sanity
+# If it's bad, then instead of use form_a_2_days_off_month, we will just create
+# from scratch for those months too
 
 # Recode month
 days_2016 <-
@@ -943,6 +944,14 @@ for (i in 1:nrow(days_2016)){
 days_2016 <- do.call('rbind', results_list)
 rm(results_list)
 
+# Remove repeats
+x <- paste0(days_2016$date, '-',
+            days_2016$school_number, '-',
+            days_2016$grade, '-',
+            days_2016$class)
+days_2016 <- days_2016[!duplicated(x),]
+rm(x)
+
 # Get all of days off into one dataframe for 2015
 days_off <-
   c("form_a_2_days_off_april",
@@ -1065,6 +1074,25 @@ for (i in 1:length(absence_dfs)){
   this_month$src <- absence_dfs[i]
   this_month$month <- months[i]
   this_month$year <- years[i]
+  # Get the combined number too but merging to the parent document
+  parent_data <- get(paste0(paste0(substr(absence_dfs[i], 1, 9), 'core')))
+  if(grepl('form_b_2_', absence_dfs[i])){
+    parent_data <- parent_data %>%
+      dplyr::select(uri, combined_number)
+  } else {
+    parent_data <- parent_data %>%
+      dplyr::select(uri, students_student_number) %>%
+      rename(combined_number = students_student_number) %>%
+      mutate(combined_number = paste0('0', combined_number))
+  }
+  this_month <-
+    left_join(
+      x = this_month,
+      y = parent_data,
+      by = c('parent_auri' = 'uri')
+    )
+  
+  
   absences <- rbind(absences,
                     this_month)
 }
@@ -1075,16 +1103,13 @@ absences <-
                                day, ' ',
                                year),
                         format = '%B %d %Y')) %>%
-  dplyr::select(parent_auri, date)
-# Bring in inteligible id numbers
-absences <-
-  absences %>%
-  left_join(form_b_2_core %>%
-              dplyr::select(combined_number, uri),
-            by = c('parent_auri' = 'uri')) %>%
-  dplyr::select(-parent_auri)
+  dplyr::select(combined_number, date)
+
 # Add an "absent = TRUE" column
 absences$absent = TRUE
+
+# Remove those with no id
+absences <- absences %>% dplyr::filter(!is.na(combined_number))
 
 # As of now we have four dataframes of interest for phase 2
 # 1. students = a roster
@@ -1096,84 +1121,109 @@ absences$absent = TRUE
 # We can now construct a dataset with ALL absences/presences
 # for all students in 2016
 
-
-# THIS IS WHERE I AM WORKING RIGHT NOW
-
 # Get student class/grade info into absences
+student_turma_info <- form_b_3_core %>%
+  dplyr::select(students_student_number,
+                students_grade,
+                students_class) %>%
+  rename(combined_number = students_student_number,
+         grade = students_grade,
+         class = students_class) %>%
+  # Make student number have a leading 0
+  mutate(combined_number = paste0('0', combined_number)) %>%
+  # Make things numeric
+  mutate(grade = as.numeric(as.character(grade))) %>%
+  # Get the school number
+  mutate(school_number = as.numeric(unlist(lapply(strsplit(combined_number, 
+                                                           '-'), 
+                                                  function(x){x[1]}))))
+student_turma_info_b <-
+  form_b_2_core %>% 
+  dplyr::select(combined_number,
+                grade,
+                class,
+                school_number) %>%
+  mutate(school_number = as.numeric(school_number))
+student_turma_info <-
+  rbind(student_turma_info,
+        student_turma_info_b)
+rm(student_turma_info_b)
+student_turma_info <-
+  student_turma_info %>%
+  filter(!is.na(grade),
+         !is.na(class),
+         !is.na(school_number))
+student_turma_info <-
+  student_turma_info[!duplicated(student_turma_info$combined_number),]
+
 absences <-
   left_join(
     x = absences,
-    y = form_b_3_core %>%
-      dplyr::select(students_student_number,
-                    students_grade,
-                    students_class) %>%
-      rename(combined_number = students_student_number,
-             grade = students_grade,
-             class = students_class) %>%
-      # Make student number have a leading 0
-      mutate(combined_number = paste0('0', combined_number)) %>%
-      # Make things numeric
-      mutate(grade = as.numeric(as.character(grade))) %>%
-      # Get the school number
-      mutate(school_number = as.numeric(unlist(lapply(strsplit(combined_number, 
-                                                               '-'), 
-                                                      function(x){x[1]}))))
+    y = student_turma_info,
+    by = 'combined_number'
   )
 
-# Remove all students from whom we don't have turma info
-absences <-
-  absences %>%
-  filter(!is.na(grade))
+# Remove weekends and holidays
+absences <- absences[!weekdays(absences$date) %in% c('Saturday', 'Sunday') &
+                       !absences$date %in% c('2016-05-01',
+                                            '2016-06-25'),]
 
-attendance <-
-  expand.grid(date = seq(as.Date('2016-02-01'),
-                         as.Date('2016-06-30'),
-                         by = 1),
-              combined_number = sort(unique(students$combined_number)))
-# Bring in the school number
-attendance <-
-  left_join(attendance,
-            students %>%
-              dplyr::select(combined_number, 
-                            school_number,
-                            GRADE,
-                            CLASS_NAME),
-            by = 'combined_number') %>%
-  rename(grade = GRADE,
-         class = CLASS_NAME)
-# Flag weekends and remove
-attendance$dow <- weekdays(attendance$date)
-attendance <- attendance %>%
-  filter(dow != 'Saturday',
-         dow != 'Sunday')
-
-# Make numeric whatever can be
-attendance$school_number <- as.numeric(as.character(attendance$school_number))
-attendance$grade <- as.numeric(as.character(attendance$grade))
+# Adjust days_2016 to right format
 days_2016$school_number <- as.numeric(as.character(days_2016$school_number))
 days_2016$grade <- as.numeric(as.character(days_2016$grade))
 
-# Only keep those days explicitly declared as lectiu
-attendance <-
-  left_join(x = attendance,
-            y = days_2016 %>%
-              mutate(keep = TRUE),
-            by = c('date', 'school_number', 'grade', 'class'))
-attendance <- attendance %>% filter(!is.na(keep)) %>%
-  dplyr::select(-keep)
+# Loop through each student in student_turma_info and
+# create their relevant absenteeism info
+results_list <- list()
+for (i in 1:nrow(student_turma_info)){
+  this_student <- student_turma_info[i,]
+  # Get the lective days for this student
+  lective_days <- 
+    days_2016 %>%
+    filter(grade == this_student$grade,
+           school_number == this_student$school_number,
+           class == this_student$class)
+  # Get the absent days for this student
+  absent_days <- 
+    absences %>%
+    filter(combined_number == this_student$combined_number) %>%
+    dplyr::select(date, absent)
+  
+  
+  if(nrow(lective_days) > 0){
+    # Join the absences to those lective days
+    result <- 
+      left_join(
+        x = lective_days,
+        y = absent_days,
+        by = 'date'
+      ) %>%
+      mutate(absent = ifelse(is.na(absent), FALSE, absent)) %>%
+      dplyr::select(date, absent)
+    
+    # Add in the combined number
+    result$combined_number <- this_student$combined_number
+    if(nrow(absent_days) > length(which(result$absent))){
+      
+      message(paste0('FLAG for row number ', i, ': ',
+                     nrow(absent_days), ' absences for this student.\n',
+                     length(which(result$absent)), ' were on lective-days.'))
+    }
 
-# "Attendnance" is the days they SHOULD have been at
-# school
-# "Absences" is the days they weren't at school
-# we assume days not flagged as absent were attended
-# Let's join
-attendance <-
-  left_join(x = attendance,
-            y = absences %>%
-              dplyr::select(date, combined_number, absent),
-            by = c('date', 'combined_number')) %>%
-  mutate(absent = ifelse(is.na(absent), FALSE, TRUE))
+  } else {
+    result <- data.frame(date = NA,
+                         absent = NA,
+                         combined_number = NA)
+    result <- result[0,]
+    message(paste0('FLAG for row numuber ', i, ': No lective days found for this student'))
+  }
 
+  # Populate results
+  results_list[[i]] <- result
+}
+
+attendance <- do.call('rbind', results_list)
+rm(results_list)
 save.image('~/Desktop/temp_today.RData')
 
 # Remove all of those NA students
