@@ -1757,3 +1757,32 @@ x <- left_join(x = students,
 # 3. attendance = a student-absence-presence paired set (both phase 1 and 2)
 # 4. days_off_df = which non-lectivo days each school had
 # 5. census
+
+
+# REVISAR FORM_2_DAYS_OFF
+month_symbols <- c('february_b',
+                   'march_b',
+                   'april_b',
+                   'may',
+                   'june')
+month_number <- c(2,3,4,5,6)
+data_frames <- paste0('form_a_2_days_off_', month_symbols)
+results_list <- list()
+for (i in 1:length(data_frames)){
+  x <- get(data_frames[i])
+  names(x)[9] <- 'value'
+  y <- x %>%
+    mutate(date = as.Date(paste0('2016-', month_number[i], '-', value))) %>%
+    mutate(dow = weekdays(date)) %>%
+    mutate(weekend = dow %in% c('Saturday', 'Sunday')) %>%
+    group_by(parent_auri) %>%
+    summarise(days = paste0(sort(unique(value)), collapse = ','),
+              n_days = length(unique(value)),
+              weekend_days = length(which(weekend))) %>%
+    mutate(non_weekend_days = n_days - weekend_days)
+  y$month <- gsub('_b', '', month_symbols[i])
+  results_list[[i]] <- y
+}
+results <- do.call('rbind', results_list)
+
+form_c_da
