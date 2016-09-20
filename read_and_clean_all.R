@@ -282,6 +282,7 @@ temp <- temp %>%
 
 # Write over absences
 absences <- temp
+absences_2015 <- absences
 # Abseces is now a one row = one student absence
 
 #######################################################
@@ -567,8 +568,16 @@ rm(form_a_core,
 absences$phase <- 1
 df$phase <- 1
 students$phase <- 1
-
-
+students_2015 <- students
+turmas_2015 <- 
+  students %>%
+  group_by(district_number,
+           school_number,
+           district,
+           SCHOOL_NAME,
+           GRADE,
+           CLASS_NAME) %>%
+  summarise(n_students = n())
 ############################################################################
 ############################################################################
 ############################################################################
@@ -585,30 +594,37 @@ library(readxl)
 # Get which network I'm on
 # wifi <- readLines(connection(system('nm-tool | grep [*]')))
 
-# Get stuff from config
-connection_options <- yaml::yaml.load_file('credentials_joe.yaml')
+# # Get stuff from config
+# connection_options <- yaml::yaml.load_file('credentials_joe.yaml')
+# 
+# # Open connection using dplyr
+# con <- do.call('src_mysql', connection_options)
+# 
+# # Tables to read
+# tables <- src_tbls(con)
+# 
+# # Read them all in
+# for (i in 1:length(tables)){
+#   message(paste0('Reading from the database: ', tables[i]))
+#   try({assign(tables[i],
+#               tbl(con,
+#                   tables[i]) %>%
+#                 collect
+#               ,
+#               envir = .GlobalEnv)})
+# }
+# 
+# # Save a snapshot
+# save.image(paste0('snapshots/',
+#                   Sys.Date(),
+#                   '.RData'))
+# save(list = ls()[grepl('form_', ls())],
+#      file = paste0('snapshots/',
+#                    Sys.Date(),
+#                    '.RData'))
+# Load up the round 2 data
+load('snapshots/2016-09-15.RData')
 
-# Open connection using dplyr
-con <- do.call('src_mysql', connection_options)
-
-# Tables to read
-tables <- src_tbls(con)
-
-# Read them all in
-for (i in 1:length(tables)){
-  message(paste0('Reading from the database: ', tables[i]))
-  try({assign(tables[i],
-              tbl(con,
-                  tables[i]) %>%
-                collect
-              ,
-              envir = .GlobalEnv)})
-}
-
-# Save a snapshot
-save.image(paste0('snapshots/',
-                  Sys.Date(),
-                  '.RData'))
 
 # In form_b_2_core (students, phase 2), create a standardly named student_number
 # so as to be compatible with the students dataframe
@@ -728,7 +744,7 @@ days_2016 <- left_join(
 
 
 
-# Apply Laia's algorithm
+# Define what to do per Laia's algorithm
 days_2016 <-
   days_2016 %>%
   mutate(action = ifelse(info == 2, 'not usable',
@@ -815,7 +831,11 @@ for (i in 1:nrow(days_2016)){
     entries <- entries[0,]
     results_list[[i]] <- entries
     
-  } else if(this_school_month$action == 'create from scratch'){
+    # We don't trust form_a_2_days_off_month, so we're just 
+    # creating from scratch for them too
+  } else if(this_school_month$action %in% c('create from scratch',
+                                            'use form_a_2_days_off_month',
+                                            'form_a_3_class_room_month_info_if_no')){
     # Create the entry from scracth
     # Get start and end date for the month
     date_range <- c(min(dates_2016[as.numeric(format(dates_2016, '%m')) == this_school_month$month_number]),
@@ -846,97 +866,99 @@ for (i in 1:nrow(days_2016)){
     results_list[[i]] <- entries
     
     
-  } else if(this_school_month$action == 'use form_a_2_days_off_month'){
-    # Get the appropriate entries
-    entries <- get(paste0('form_a_2_days_off_', 
-                          this_school_month$month_symbol)) %>%
-      # Drop the turma-specific uri
-      dplyr::select(-uri) %>%
-      # Get the school specific uri
-      left_join(form_a_2_core %>%
-                  dplyr::select(uri, school),
-                by = c('parent_auri' = 'uri')) %>%
-      # Keep only those from this school
-      filter(school == this_school_month$school_number) %>%
-      dplyr::select(contains('off'))
-    # Get the unique days off
-    entries <- sort(unique(as.data.frame(entries)[,1]))
-    # Convert entries to dates
-    dates <- as.Date(paste0('2016-0', 
-                    this_school_month$month_number,
-                    '-',
-                    entries))
-    # Get start and end date for the month
-    date_range <- c(min(dates_2016[as.numeric(format(dates_2016, '%m')) == this_school_month$month_number]),
-                    max(dates_2016[as.numeric(format(dates_2016, '%m')) == this_school_month$month_number]))
-    # Create a date sequence for the month
-    date_sequence <- seq(date_range[1],
-                         date_range[2],
-                         by = 1)
-    # remove from the sequence days off
-    date_sequence <- date_sequence[!date_sequence %in% dates]
-    # Remove holidays if applicable
-    date_sequence <- date_sequence[!date_sequence %in% c('2016-05-01',
-                                                         '2016-06-25')]
-    # Get the days of the week
-    dow <- weekdays(date_sequence)
-    # Remove weekends
-    date_sequence <- date_sequence[!dow %in% c('Saturday', 'Sunday')]
-    # For each date, create a row in a dataframe
-    entries <- data.frame(date = date_sequence)
-    entries <- left_join(
-      x = entries %>%
-        mutate(merger = 1),
-      y = this_school_month %>%
-        dplyr::select(school_number, grade, class) %>%
-        mutate(merger = 1), 
-      by = 'merger'
-    ) %>%
-      dplyr::select(-merger)
-    # Add the entries to the repository of results
-    results_list[[i]] <- entries
-    
-  } else if(this_school_month$action == 'use form_a_3_class_room_month_info_if_no'){
-    # These are LECTIVE days
-    # Get the lective days for this turma/month pair
-    entries <- 
-      get(paste0('form_a_3_class_room_', this_school_month$month, '_info_if_no'))
-    # Filter down to only those entries for this turma
-    entries <-
-      entries %>%
-      filter(parent_auri == this_school_month$uri)
-    # Get only the days in question
-    entries <-
-      entries %>%
-      dplyr::select(value)
-    # Get a unique/sorted version
-    entries <- unique(sort(as.numeric(data.frame(entries)[,1])))
-    # Convert entries to dates
-    dates <- as.Date(paste0('2016-0', 
-                            this_school_month$month_number,
-                            '-',
-                            entries))
-    date_sequence <- dates
-    # Remove holidays if applicable
-    date_sequence <- date_sequence[!date_sequence %in% c('2016-05-01',
-                                                         '2016-06-25')]
-    # Get the days of the week
-    dow <- weekdays(date_sequence)
-    # Remove weekends
-    date_sequence <- date_sequence[!dow %in% c('Saturday', 'Sunday')]
-    # For each date, create a row in a dataframe
-    entries <- data.frame(date = date_sequence)
-    entries <- left_join(
-      x = entries %>%
-        mutate(merger = 1),
-      y = this_school_month %>%
-        dplyr::select(school_number, grade, class) %>%
-        mutate(merger = 1), 
-      by = 'merger'
-    ) %>%
-      dplyr::select(-merger)
-    # Add the entries to the repository of results
-    results_list[[i]] <- entries  
+  #  } else if(this_school_month$action == 'use form_a_2_days_off_month'){
+  #   # Get the appropriate entries
+  #   entries <- get(paste0('form_a_2_days_off_', 
+  #                         this_school_month$month_symbol)) %>%
+  #     # Drop the turma-specific uri
+  #     dplyr::select(-uri) %>%
+  #     # Get the school specific uri
+  #     left_join(form_a_2_core %>%
+  #                 dplyr::select(uri, school),
+  #               by = c('parent_auri' = 'uri')) %>%
+  #     # Keep only those from this school
+  #     filter(school == this_school_month$school_number) %>%
+  #     dplyr::select(contains('off'))
+  #   # Get the unique days off
+  #   entries <- sort(unique(as.data.frame(entries)[,1]))
+  #   # Convert entries to dates
+  #   dates <- as.Date(paste0('2016-0', 
+  #                   this_school_month$month_number,
+  #                   '-',
+  #                   entries))
+  #   # Get start and end date for the month
+  #   date_range <- c(min(dates_2016[as.numeric(format(dates_2016, '%m')) == this_school_month$month_number]),
+  #                   max(dates_2016[as.numeric(format(dates_2016, '%m')) == this_school_month$month_number]))
+  #   # Create a date sequence for the month
+  #   date_sequence <- seq(date_range[1],
+  #                        date_range[2],
+  #                        by = 1)
+  #   # remove from the sequence days off
+  #   date_sequence <- date_sequence[!date_sequence %in% dates]
+  #   # Remove holidays if applicable
+  #   date_sequence <- date_sequence[!date_sequence %in% c('2016-05-01',
+  #                                                        '2016-06-25')]
+  #   # Get the days of the week
+  #   dow <- weekdays(date_sequence)
+  #   # Remove weekends
+  #   date_sequence <- date_sequence[!dow %in% c('Saturday', 'Sunday')]
+  #   # For each date, create a row in a dataframe
+  #   entries <- data.frame(date = date_sequence)
+  #   entries <- left_join(
+  #     x = entries %>%
+  #       mutate(merger = 1),
+  #     y = this_school_month %>%
+  #       dplyr::select(school_number, grade, class) %>%
+  #       mutate(merger = 1), 
+  #     by = 'merger'
+  #   ) %>%
+  #     dplyr::select(-merger)
+  #   # Add the entries to the repository of results
+  #   results_list[[i]] <- entries
+  #   
+  #   # WE DONT TRUST form_a_3_class_room_month_info_if_no
+  #   # so we're just creating from scratch
+  # # } else if(this_school_month$action == 'use form_a_3_class_room_month_info_if_no'){
+  #   # These are LECTIVE days
+  #   # Get the lective days for this turma/month pair
+  #   entries <- 
+  #     get(paste0('form_a_3_class_room_', this_school_month$month, '_info_if_no'))
+  #   # Filter down to only those entries for this turma
+  #   entries <-
+  #     entries %>%
+  #     filter(parent_auri == this_school_month$uri)
+  #   # Get only the days in question
+  #   entries <-
+  #     entries %>%
+  #     dplyr::select(value)
+  #   # Get a unique/sorted version
+  #   entries <- unique(sort(as.numeric(data.frame(entries)[,1])))
+  #   # Convert entries to dates
+  #   dates <- as.Date(paste0('2016-0', 
+  #                           this_school_month$month_number,
+  #                           '-',
+  #                           entries))
+  #   date_sequence <- dates
+  #   # Remove holidays if applicable
+  #   date_sequence <- date_sequence[!date_sequence %in% c('2016-05-01',
+  #                                                        '2016-06-25')]
+  #   # Get the days of the week
+  #   dow <- weekdays(date_sequence)
+  #   # Remove weekends
+  #   date_sequence <- date_sequence[!dow %in% c('Saturday', 'Sunday')]
+  #   # For each date, create a row in a dataframe
+  #   entries <- data.frame(date = date_sequence)
+  #   entries <- left_join(
+  #     x = entries %>%
+  #       mutate(merger = 1),
+  #     y = this_school_month %>%
+  #       dplyr::select(school_number, grade, class) %>%
+  #       mutate(merger = 1), 
+  #     by = 'merger'
+  #   ) %>%
+  #     dplyr::select(-merger)
+  #   # Add the entries to the repository of results
+  #   results_list[[i]] <- entries  
     }
 }
 
@@ -952,101 +974,9 @@ x <- paste0(days_2016$date, '-',
 days_2016 <- days_2016[!duplicated(x),]
 rm(x)
 
-# Get all of days off into one dataframe for 2015
-days_off <-
-  c("form_a_2_days_off_april",
-    # "form_a_2_days_off_april_b",
-    "form_a_2_days_off_august",
-    # "form_a_2_days_off_february_b",
-    "form_a_2_days_off_july",
-    "form_a_2_days_off_june",
-    # "form_a_2_days_off_march_b",
-    "form_a_2_days_off_may",
-    "form_a_2_days_off_november",
-    "form_a_2_days_off_october",
-    "form_a_2_days_off_september")
-keys <- c('April 2015',
-          # 'April 2016',
-          'August 2015',
-          # 'February 2016',
-          'July 2015',
-          'June 2015',
-          # 'March 2016',
-          'May 2015',
-          'November 2015',
-          'October 2015',
-          'September 2015')
-months <- c('April',
-            # 'April',
-            'August',
-            # 'February',
-            'July',
-            'June',
-            # 'March',
-            'May',
-            'November',
-            'October',
-            'September')
-years <- c(2015,
-           # 2016,
-           2015,
-           # 2016,
-           2015,
-           2015,
-           # 2016,
-           2015,
-           2015,
-           2015,
-           2015)
-days_off_df <- data.frame(form_a_2_days_off_april)[0,]
-for (i in 1:length(days_off)){
-  x <- get(days_off[i])
-  x$src <- days_off[i]
-  names(x)[9] <- 'days_off'
-  x$month_year <- keys[i]
-  x$month <- months[i]
-  x$year <- years[i]
-  days_off_df <- rbind(days_off_df,
-                       x)
-}
-
-save.image('~/Desktop/temp0.RData')
-
-# Create an actual date column
-days_off_df$date <-
-  as.Date(paste0(days_off_df$month,
-                 ' ',
-                 days_off_df$days_off,
-                 ' ',
-                 days_off_df$year),
-          format = '%B %d %Y')
-# Select only the columns we need
-days_off_df <-
-  days_off_df %>%
-  dplyr::select(uri, parent_auri, date)
-# Get meaningful names in days_off_df
-days_off_df <-
-  days_off_df %>%
-  left_join(form_a_2_core %>%
-              dplyr::select(school, uri, district),
-            by = c('parent_auri' = 'uri')) %>%
-  left_join(valid_schools %>%
-              dplyr::select(`School Code`, `Correct name`) %>%
-              rename(school = `School Code`,
-                     school_name = `Correct name`) %>%
-              mutate(school = as.character(school)),
-            by = 'school') %>%
-  # Keep only those columns we need
-  dplyr::select(school, school_name, date)
-# Keep only unique
-days_off_df <- days_off_df[!duplicated(days_off_df),]
-# arrange
-days_off_df <- days_off_df %>%
-  arrange(date)
-
 # As of now we have three dataframes of interest
 # 1. students = a roster
-# 2. days_off_df = a dataframe of each schools days OFF (for 2015 data)
+# ?? 2. days_off_df = a dataframe of each schools days OFF (for 2015 data)
 # 3. performance = the academic performance of each student
 # 4. days_2016 = a dataframe of each classes days ON (for 2016 data)
 
@@ -1113,7 +1043,7 @@ absences <- absences %>% dplyr::filter(!is.na(combined_number))
 
 # As of now we have four dataframes of interest for phase 2
 # 1. students = a roster
-# 2. days_off_df = a dataframe of each schools days off
+# 2. ??? NO REMOVE days_off_df = a dataframe of each schools days off
 # 3. performance = the academic performance of each student
 # 4. absences = a student-absence paired set
 # 5. days_2016 = a dataframe of eligible school days for 2016
@@ -1224,7 +1154,6 @@ for (i in 1:nrow(student_turma_info)){
 
 attendance <- do.call('rbind', results_list)
 rm(results_list)
-save.image('~/Desktop/temp_today.RData')
 
 # Remove all of those NA students
 
@@ -1313,6 +1242,9 @@ performance <- results_df
 # And remove the other stuff
 rm(results_df, x)
 
+save.image('~/Desktop/temp_today.RData')
+
+
 # Get df (ie, phase 1) into the same form as attendance
 # (ie, phase 2)
 df <- df %>%
@@ -1325,12 +1257,15 @@ df <- df %>%
   dplyr::select(date, combined_number, school_number, absent)
 
 # Combine both phase 1 and 2 absenteeism
+keep_columns <- names(df)
 attendance <- 
   rbind(
     # phase 1
     df %>% 
+      dplyr::select_(keep_columns) %>%
       mutate(phase = 1),
     attendance %>%
+      dplyr::select_(keep_columns) %>%
       mutate(phase = 2))
 
 # Keep only those students that appear in both phase 1
@@ -1574,20 +1509,6 @@ for (i in 1:nrow(corrections)){
 save.image('~/Desktop/temp2.RData')
 ######################################################
 
-######################################################
-# CONSTRUCT DENOMINATORS FOR DIAS LECTIUS AND RECALCULATE ABSENTEEISM, DAYS OFF, ETC.
-# - Before February 2016, uses form a 2 days off, these are dias FERIADOS (b = 2016, but ignore) -- this was already done
-# --- tot a nivell de escola
-# - February-June 2016 uses form a 3, these are not FERIADOS, the are LECTIUS
-# --- tot a nivell de turma/class
-# In the above, any month which is not "complete" gets no data at all
-# For May/June 2016, the true feriados days are in 
-# ---form_a_3_class_room_may_info_no
-# ---form_a_3_class_room_may_info_no
-
-
-
-
 # Bring in census data
 
 # Magude  ----------------------------------------------------------
@@ -1784,5 +1705,3 @@ for (i in 1:length(data_frames)){
   results_list[[i]] <- y
 }
 results <- do.call('rbind', results_list)
-
-form_c_da
