@@ -1333,6 +1333,7 @@ column_to_df <- function(column_name){
 }
 
 # Loop through each row of x and get results
+# VERY SLOWWWWWW
 results_list <- list()
 counter <- 0
 for (j in 1:ncol(x)){
@@ -1364,7 +1365,7 @@ performance <- results_df
 # And remove the other stuff
 rm(results_df, x)
 
-save.image('~/Desktop/temp_today.RData')
+save.image('temp_today.RData')
 
 
 # Get df (ie, phase 1) into the same form as attendance
@@ -1372,11 +1373,11 @@ save.image('~/Desktop/temp_today.RData')
 df <- df %>%
   dplyr::select(date, absence, student_id) %>%
   left_join(students %>%
-              dplyr::select(student_id, combined_number, school_number),
+              dplyr::select(student_id, combined_number),
             by = 'student_id') %>%
   dplyr::select(-student_id) %>%
   rename(absent = absence) %>%
-  dplyr::select(date, combined_number, school_number, absent)
+  dplyr::select(date, combined_number, absent)
 
 # Combine both phase 1 and 2 absenteeism
 keep_columns <- names(df)
@@ -1384,10 +1385,10 @@ attendance <-
   rbind(
     # phase 1
     df %>% 
-      dplyr::select_(keep_columns) %>%
+      dplyr::select(combined_number, date, absent) %>%
       mutate(phase = 1),
-    attendance %>%
-      dplyr::select_(keep_columns) %>%
+    df_2016 %>%
+      dplyr::select(combined_number, date, absent) %>%
       mutate(phase = 2))
 
 # Keep only those students that appear in both phase 1
@@ -1410,67 +1411,6 @@ attendance <-
 # Remove repetitions
 attendance <- attendance[!duplicated(attendance),]
 
-# Remove any of those students flagged as not having complete
-# absenteeism information for any period
-# In the following tables
-# form_b_2_core$absentism_info_absence_february
-# form_b_2_core$absentism_info_absence_march
-# form_b_2_core$absentism_info_absence_april
-# 1 = student found AND has been absent
-# 2 = student found AND has not been absent
-# 3 = no information on the student
-# If 3, we need to remove completely
-# AND student_found has to be equal to 1
-
-# Keep only these ids that meet the above conditions
-# 
-# keep <- form_b_2_core %>%
-#   filter(student_found == 1) %>%
-#   dplyr::select(combined_number)
-
-# attendance2 <- attendance
-#   attendance %>%
-#   filter(combined_number %in% keep$combined_number)
-# Not doing the above for now
-attendance2 <- attendance
-
-# Flag month specific problems
-attendance2$flag <- FALSE
-attendance2 <- 
-  left_join(attendance2,
-            form_b_2_core %>%
-              dplyr::select(combined_number,
-                            absentism_info_absence_february,
-                            absentism_info_absence_march,
-                            absentism_info_absence_april,
-                            student_found))
-
-attendance2$flag <-
-  ifelse(format(attendance2$date, '%m-%Y') == '02-2016' &
-           !attendance2$absentism_info_absence_february %in% c(1, 2), TRUE,
-         ifelse(format(attendance2$date, '%m-%Y') == '03-2016' &
-                  !attendance2$absentism_info_absence_march %in% c(1, 2), TRUE,
-                ifelse(format(attendance2$date, '%m-%Y') == '04-2016' &
-                         !attendance2$absentism_info_absence_april %in% c(1, 2), TRUE, attendance2$flag)))
-
-# Also flag modern entries that have not been found
-attendance2$flag <-
-  ifelse(format(attendance2$date, '%m-%Y') %in% c('02-2016',
-                                                  '03-2016',
-                                                  '04-2016') &
-           (attendance2$student_found != 1 |
-              is.na(attendance2$student_found)),
-         TRUE,
-         attendance2$flag)
-# Remove the flags
-attendance2 <- 
-  attendance2 %>%
-  filter(!flag)
-# Overwrite attendance
-attendance <- attendance2
-rm(attendance2)
-
-save.image('~/Desktop/temp.RData')
 
 ######################################################
 # Bring in corrections data
@@ -1628,8 +1568,30 @@ for (i in 1:nrow(corrections)){
   }
 }
 
-save.image('~/Desktop/temp2.RData')
+# Remove all non-classes
+performance <- performance %>% filter(!is.na(value))
+
+# Remove some garbage
+rm(list = ls()[grepl('form_', ls())])
+rm(absences, absences_per_turma_2015,
+   absent_days, corrections,
+   days_2016, df, df_2016, entries,
+   ids, lective_days, old_attendance, old_student,
+   parent_data, reference_months, remove_these,
+   result, results, results_template, student_turma_info,
+   students_2015, the_data, this_correction, this_file,
+   this_school_month, turmas_2015, valid_schools, x, x_df)
+rm(absence_dfs, absences_2016_this_month, after, before,
+   column_name, con, connection_options,
+   counter, data_files, date_range, date_sequence, dates_2016,
+   dow, i, id_files, ids_list, j, keep_columns, months, new_name,
+   possible_dates, tables, these_absences_2016, this_column,
+   this_combined_number, this_id, this_month, this_reference,
+   this_student, year_cols, years)
+save.image('temp2.RData')
 ######################################################
+
+
 
 # Bring in census data
 
@@ -1788,8 +1750,9 @@ rm(census_manhica, census_magude)
 
 # Join census data to student data 
 
-x <- left_join(x = students,
+students <- left_join(x = students,
                y = census %>%
+                 filter(!duplicated(permid)) %>%
                  dplyr::select(-gender),
                by = c('PERMID' = 'permid'))
 
@@ -1797,32 +1760,7 @@ x <- left_join(x = students,
 # 1. students = a roster
 # 2. performance = the academic performance of each student
 # 3. attendance = a student-absence-presence paired set (both phase 1 and 2)
-# 4. days_off_df = which non-lectivo days each school had
-# 5. census
+# 4. census
+rm(ll)
 
-
-# REVISAR FORM_2_DAYS_OFF
-month_symbols <- c('february_b',
-                   'march_b',
-                   'april_b',
-                   'may',
-                   'june')
-month_number <- c(2,3,4,5,6)
-data_frames <- paste0('form_a_2_days_off_', month_symbols)
-results_list <- list()
-for (i in 1:length(data_frames)){
-  x <- get(data_frames[i])
-  names(x)[9] <- 'value'
-  y <- x %>%
-    mutate(date = as.Date(paste0('2016-', month_number[i], '-', value))) %>%
-    mutate(dow = weekdays(date)) %>%
-    mutate(weekend = dow %in% c('Saturday', 'Sunday')) %>%
-    group_by(parent_auri) %>%
-    summarise(days = paste0(sort(unique(value)), collapse = ','),
-              n_days = length(unique(value)),
-              weekend_days = length(which(weekend))) %>%
-    mutate(non_weekend_days = n_days - weekend_days)
-  y$month <- gsub('_b', '', month_symbols[i])
-  results_list[[i]] <- y
-}
-results <- do.call('rbind', results_list)
+save.image('final_data.RData')
