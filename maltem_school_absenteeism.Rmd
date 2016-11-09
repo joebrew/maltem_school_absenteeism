@@ -303,3 +303,5 @@ ggplot(data = temp4,
   geom_vline(xintercept = as.numeric(as.Date(c('2015-11-15', '2016-01-15'))), lty = 2, alpha = 0.6, color = 'darkred') +
   ggtitle('Montly absenteeism: Magude as a % of Manhiça')
 ```
+
+# Census visualizations

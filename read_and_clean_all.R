@@ -1791,14 +1791,61 @@ if('final_data.RData' %in% dir()){
   ##############################################
   ##############################################
   
+  # Clean up census a bit more
+  census <- census %>%
+    filter(!duplicated(permid)) 
+  
   # Join census data to student data 
-  
+  students$gender <- toupper(students$gender)
+  census$gender <- toupper(census$gender)
   students <- left_join(x = students,
-                        y = census %>%
-                          filter(!duplicated(permid)) %>%
-                          dplyr::select(-gender),
-                        by = c('PERMID' = 'permid'))
+                        y = census,
+                        by = c('PERMID' = 'permid',
+                               'gender' = 'gender'))
+  students$name <- NULL # (remove the name from census)
+  students$name <- students$NAME; students$NAME <- NULL
   
+  # # For each student that was NOT matched in the census, 
+  # # see if we can identify a match
+  # unmatched <- which(is.na(students$lng))
+  # match_scores <- adist(x = students$name,
+  #                       y = census$name)
+  # save(match_scores, file = 'match_scores.RData')
+  # # Get the best matches
+  # best_indices <- apply(match_scores,
+  #                       1,
+  #                       function(x){
+  #                         which.min(x)
+  #                       })
+  # best_scores <- apply(match_scores,
+  #                      1, 
+  #                      function(x){
+  #                        min(x, na.rm = TRUE)
+  #                      })
+  # save(best_indices,
+  #      best_scores,
+  #      file = 'best.RData')
+  # 
+  # students$perfect_match_in_census <- FALSE
+  # students$approximate_match_in_census <- FALSE
+  # students$perfect_match_in_census[!is.na(students$lng)] <- TRUE
+  # for (i in unmatched){
+  #   # Extract the student from students
+  #   this_student <- students$name[i]
+  #   
+  #   # Extract the best match of identical gender
+  #   unlist(best_indices[i])[1]
+  #   
+  #   
+  #   # If of suitable proximity, populate
+  #   if(xxx){
+  #     students$approximate_match_in_census[i] <- TRUE
+  #     students$lng[i]
+  #     students$lat[i]
+  #     students$
+  #   }
+  # }
+  # 
   # Make a dataframe of all schools
   schools <- 
     students %>%
@@ -1859,15 +1906,483 @@ if('final_data.RData' %in% dir()){
   
   save.image('final_data.RData')
 }
+# 
+# # Write csvs
+# output <- paste0('~/Desktop/maltem_student_absenteeism_', Sys.Date())
+# dir.create(output)
+# files <- c('attendance',
+#            'performance',
+#            'schools',
+#            'students')
+# for (i in 1:length(files)){
+#   write_csv(get(files[i]),
+#             paste0(output, '/', files[i], '.csv'))
+# }
 
-# Write csvs
-output <- paste0('~/Desktop/maltem_student_absenteeism_', Sys.Date())
-dir.create(output)
-files <- c('attendance',
-           'performance',
-           'schools',
-           'students')
-for (i in 1:length(files)){
-  write_csv(get(files[i]),
-            paste0(output, '/', files[i], '.csv'))
-}
+# source('theme.R')
+# 
+# x <- 
+#   performance %>% 
+#   left_join(students %>% dplyr::select(combined_number, district)) %>%
+#   filter(!is.na(district)) %>%
+#   mutate(year_trimester = paste0(year, '-', trimester)) %>%
+#   group_by(trimester, year_trimester, subject, district) %>%
+#   summarise(grade = mean(value, na.rm = TRUE))
+# x$subject <- gsub('_', ' ', x$subject)
+# 
+# ggplot(data = x,
+#        aes(x = trimester,
+#            y = grade,
+#            group = district,
+#            color = district)) +
+#   geom_line() +
+#   geom_point() +
+#   facet_wrap(~subject, nrow = 2) +
+#   theme_maltem() +
+#   theme(axis.text.x = element_text(angle = 90)) +
+#   xlab('Time') +
+#   ylab('Average evaluation') +
+#   scale_color_manual(name = 'Location',
+#                      values = c('darkorange', 'darkgreen')) +
+#   ggtitle('Performance by class',
+#           'All students') +
+#   geom_vline(xintercept = c(3.3, 3.45),
+#              alpha = 0.6,
+#              lty = 2)
+# 
+# # GIF
+# dir.create('performance_gifs')
+# for (i in seq(1, 4.2, length = 100)){
+#   file_name <- i
+#   while(nchar(file_name) < 3){
+#     file_name <- paste0('0', file_name)
+#   }
+#   the_limit <- i
+#   the_limit <- ifelse(the_limit < 4.2,
+#                       the_limit,
+#                       4.2)
+#   png(filename = paste0('performance_gifs/', file_name, '.png'),
+#       width = 680, height = 480)
+#   g <- ggplot(data = x,
+#          aes(x = trimester,
+#              y = grade,
+#              group = district,
+#              color = district)) +
+#     geom_line() +
+#     geom_point() +
+#     facet_wrap(~subject, nrow = 2) +
+#     theme_maltem() +
+#     theme(axis.text.x = element_text(angle = 90)) +
+#     xlab('Time') +
+#     ylab('Average evaluation') +
+#     scale_color_manual(name = 'Location',
+#                        values = c('darkorange', 'darkgreen')) +
+#     ggtitle('Performance by class',
+#             'All students') +
+#     geom_vline(xintercept = c(3.3, 3.45),
+#                alpha = 0.6,
+#                lty = 2) +
+#     coord_cartesian(xlim = c(1, the_limit))
+#   print(g)
+#   dev.off()
+#   message(i)
+# }
+# 
+# 
+# 
+# # performance
+# x <- performance %>%
+#   filter(!is.na(value)) %>%
+#   left_join(students %>%
+#               dplyr::select(combined_number, district)) %>%
+#   mutate(year_trimester = paste0(year, '-', trimester)) %>%
+#   filter(!is.na(district)) %>%
+#   group_by(trimester, year_trimester, district) %>%
+#   summarise(avg = mean(value))
+# 
+# ggplot(data = x,
+#        aes(x = trimester,
+#            y = avg,
+#            group = district,
+#            color = district)) +
+#   geom_point() +
+#   geom_line() +
+#   theme_maltem() +
+#   xlab('Trimester') +
+#   ylab('Average evaluation') +
+#   scale_color_manual(name = '',
+#                      values = c('darkorange', 'darkgreen')) +
+#   ggtitle('Average school performance',
+#           'All classes, all students') +
+#   geom_vline(xintercept = c(3.3, 3.45),
+#              alpha = 0.6,
+#              lty = 2)
+# 
+# 
+# # GIF
+# dir.create('performance_gif_agg')
+# for (i in seq(1, 6, length = 100)){
+#   file_name <- i
+#   while(nchar(file_name) < 3){
+#     file_name <- paste0('0', file_name)
+#   }
+#   the_limit <- i
+#   the_limit <- ifelse(the_limit < 4.2,
+#                       the_limit,
+#                       4.2)
+#   png(filename = paste0('performance_gif_agg/', file_name, '.png'),
+#       width = 680, height = 480)
+#   g <- 
+#     ggplot(data = x,
+#            aes(x = trimester,
+#                y = avg,
+#                group = district,
+#                color = district)) +
+#     geom_point() +
+#     geom_line() +
+#     theme_maltem() +
+#     xlab('Trimester') +
+#     ylab('Average evaluation') +
+#     scale_color_manual(name = '',
+#                        values = c('darkorange', 'darkgreen')) +
+#     ggtitle('Average school performance',
+#             'All classes, all students') +
+#     geom_vline(xintercept = c(3.3, 3.45),
+#                alpha = 0.6,
+#                lty = 2) +
+#     coord_cartesian(xlim = c(1, the_limit))
+#   print(g)
+#   dev.off()
+#   message(i)
+# }
+# 
+# 
+# x <- performance %>%
+#   filter(!is.na(value)) %>%
+#   left_join(students %>%
+#               dplyr::select(combined_number, district)) %>%
+#   mutate(year_trimester = paste0(year, '-', trimester)) %>%
+#   filter(!is.na(district)) 
+# 
+# ggplot(data = x,
+#        aes(x = value,
+#            group = district,
+#            fill = district)) +
+#   geom_density(adjust = 2, 
+#                alpha = 0.3) +
+#   facet_wrap(~trimester, ncol = 4) +
+#   xlab('Performance') +
+#   ylab('Density') +
+#   theme_maltem() +
+#   ggtitle('Distribution of student performance by trimsester') +
+#   scale_fill_manual(name = '',
+#                     values = c('darkorange', 'darkgreen'))
+# 
+# 
+# # Distance from each school
+# students_spatial <- 
+#   students %>%
+#   mutate(x = lng, y = lat) %>%
+#   filter(!is.na(lng))
+# coordinates(students_spatial) <- ~x+y 
+# 
+# schools_spatial <- 
+#   schools %>%
+#   ungroup %>%
+#   mutate(x = lng, y = lat) %>%
+#   filter(!is.na(lng))
+# coordinates(schools_spatial) <- ~x+y
+# proj4string(schools_spatial) <- proj4string(students_spatial) <- proj4string(moz)
+# 
+# schools_spatial$school_x <- schools_spatial$lng
+# schools_spatial$school_y <- schools_spatial$lat
+# 
+# students_spatial@data <-
+#   left_join(students_spatial@data,
+#             schools_spatial@data %>%
+#               dplyr::select(SCHOOL_NAME,
+#                             school_x,
+#                             school_y))
+# 
+# students_spatial$distance_to_school <- spDists(x = students_spatial[,c('lng', 'lat')],
+#                                                y = students_spatial[,c('school_x', 'school_y')],
+#                                                    longlat = TRUE,
+#                                                    diagonal = FALSE)[,1]
+# 
+# x <- students_spatial@data %>% filter(distance_to_school < 50) %>%
+#   group_by(SCHOOL_NAME) %>%
+#   mutate(avg = mean(distance_to_school) / 10) %>%
+#   arrange(desc(avg))
+# x$SCHOOL_NAME <- factor(x$SCHOOL_NAME, levels = unique(x$SCHOOL_NAME))
+# ggplot(data = x,
+#        aes(x = SCHOOL_NAME,
+#            y = distance_to_school  / 10)) +
+#   geom_jitter(alpha = 0.3) +
+#   geom_violin(alpha = 0.5, color = 'darkorange') +
+#   theme_maltem() +
+#   theme(axis.text.x = element_text(angle = 90)) +
+#   xlab('School') +
+#   ylab('Kilometers') +
+#   ggtitle('Distribution of distance to school for students',
+#          'Census-matched students only')
+# 
+# ggplot(data = x,
+#        aes(x = distance_to_school / 10)) +
+#   geom_density(alpha = 0.6, 
+#                fill = 'darkorange') +
+#   xlab('Kilometers') +
+#   ylab('Density') +
+#   theme_maltem() +
+#   ggtitle('Distribution of kilometers from student residence to school',
+#           'Censed students only')
+# 
+# y <- x %>% filter(!is.na(distance_to_school))
+# y <- y %>% ungroup
+# y <- y %>% filter(!is.na(district))
+# y$district <- factor(y$district, levels = unique(y$district))
+# y$distance_to_school <- y$distance_to_school / 10
+# y <- data.frame(y)
+# 
+# ggplot(data = y,
+#        aes(x = distance_to_school,
+#            fill = district)) +
+#   geom_density(alpha = 0.6) +
+#   xlab('Kilometers') +
+#   ylab('Density') +
+#   theme_maltem() +
+#   ggtitle('Distribution of kilometers from student residence to school',
+#           'Censed students only') +
+#   scale_fill_manual(name = 'Location',
+#                     values = c('darkorange', 'darkgreen'))
+# 
+# 
+# 
+# # SCHOOL PERFORMANCE
+# 
+# ggplot(data = performance,
+#        aes(x = value)) +
+#   geom_density(adjust = 2, alpha = 0.6,
+#                fill = 'darkorange') +
+#   xlab('Evaluation') +
+#   ylab('Density') +
+#   ggtitle('Density of student school performance',
+#           'All students, all locations') +
+#   theme_maltem()
+# 
+# x <- 
+#   performance %>% 
+#   left_join(students %>% dplyr::select(combined_number, district)) %>%
+#   filter(!is.na(district)) %>%
+#   group_by(year, subject, district) %>%
+#   summarise(grade = mean(value, na.rm = TRUE))
+# x$year <- factor(x$year)
+# x$subject <- gsub('_', ' ', x$subject)
+# 
+# ggplot(data = x,
+#        aes(x = year,
+#            y = grade,
+#            group = district,
+#            color = district)) +
+#   geom_line() +
+#   geom_point() +
+#   facet_wrap(~subject, nrow = 2) +
+#   theme_maltem() +
+#   theme(axis.text.x = element_text(angle = 90)) +
+#   xlab('Time') +
+#   ylab('Average evaluation') +
+#   scale_color_manual(name = 'Location',
+#                      values = c('darkorange', 'darkgreen')) +
+#   ggtitle('Performance by class',
+#           'All students')
+# 
+# 
+# # SCHOOL PERFORMANCE
+# x <- 
+#   performance %>% 
+#   left_join(students %>% dplyr::select(combined_number, district)) %>%
+#   filter(!is.na(district)) %>%
+#   group_by(year, district) %>%
+#   summarise(grade = mean(value, na.rm = TRUE))
+# x$year <- factor(x$year)
+# 
+# ggplot(data = x,
+#        aes(x = year,
+#            y = grade,
+#            group = district,
+#            color = district)) +
+#   geom_line() +
+#   geom_point() +
+#   theme_maltem() +
+#   theme(axis.text.x = element_text(angle = 90)) +
+#   xlab('Time') +
+#   ylab('Average evaluation') +
+#   scale_color_manual(name = 'Location',
+#                      values = c('darkorange', 'darkgreen')) +
+#   ggtitle('Average school performance',
+#           'All students, all classes')
+# 
+# # Location of students from the census
+# #### PLOT
+# combined <- rbind(magude_fortified %>% mutate(District = 'Magude'),
+#                   manhica_fortified %>% mutate(District = 'Manhiça'))
+# combined$District <- factor(combined$District,
+#                             levels = c('Magude',
+#                                        'Manhiça'))
+# 
+# ggplot() +
+#   geom_polygon(data = combined,
+#                aes(x = long,
+#                    y = lat,
+#                    # color = 'black',
+#                    group = group,
+#                    id = District,
+#                    fill = District),
+#                alpha = 0.6) +
+#   theme_map() +
+#   scale_fill_manual(name = 'District',
+#                     values = c('darkorange', 'darkred')) +
+#   geom_point(data = schools,
+#              aes(x = lng,
+#                  y = lat,
+#                  size = n_students),
+#              alpha = 0.6) +
+#   scale_size_area(name = 'Number of students', max_size = 5) +
+#   geom_point(data = students,
+#              aes(x = lng,
+#                  y = lat),
+#              color = 'blue',
+#              pch = '.',
+#              alpha = 0.3)
+# 
+# # Schools by color
+# ggplot() +
+#   geom_polygon(data = combined,
+#                aes(x = long,
+#                    y = lat,
+#                    group = group),
+#                fill = NA,
+#                color = 'black') +
+#   geom_point(data = students,
+#              aes(x = lng,
+#                  y = lat,
+#                  color = SCHOOL_NAME)) +
+#   theme(legend.text = element_text(size = 2)) +
+#   theme_map()
+# 
+# # ANIMATION PLOT
+# the_dates <- sort(unique(attendance$date))
+# xl <- range(the_dates)
+# x <- attendance %>% 
+#   dplyr::select(-phase) %>%
+#   left_join(students) %>%
+#   filter(!is.na(district))
+# results_list <- list()
+# dir.create('gifs')
+# for (i in 1:length(the_dates)){
+#   message(i)
+#   file_name <- i
+#   while(nchar(file_name) <3){
+#     file_name <- paste0('0', file_name)
+#   }
+#   this_date <- the_dates[i]
+#    these_data <- x %>%
+#     filter(date <= this_date) %>%
+#      group_by(date, district) %>%
+#      summarise(absences = length(which(absent)),
+#                eligibles = n()) %>%
+#      ungroup %>%
+#      mutate(absenteeism_rate = absences / eligibles * 100) %>%
+#      mutate(today = date == this_date) %>%
+#      mutate(observation_date = this_date)
+#    results_list[[i]] <- these_data
+# 
+#    png(filename = paste0('gifs/', file_name, '.png'),
+#        width = 680, height = 480)
+#    g <- ggplot(data = these_data,
+#           aes(x = date,
+#               y = absenteeism_rate,
+#               color = district)) +
+#      geom_point(alpha = 0.5) +
+#      theme_maltem() +
+#      geom_line(alpha = 0.2) +
+#      geom_smooth() +
+#      xlab('Date') +
+#      ylab('Absenteeism rate') +
+#      theme_maltem() +
+#      xlab('Date') +
+#      ylab('Absenteeism rate') +
+#      scale_color_manual(name = 'Location',
+#                         values = c('darkorange', 'darkgreen')) +
+#      geom_vline(xintercept = as.numeric(as.Date(c('2015-12-01',
+#                                                   '2016-01-01'))),
+#                 alpha = 0.6,
+#                 lty = 2) +
+#        xlim(xl) +
+#        ylim(0, 30) +
+#        ggtitle(format(the_dates[i], format = '%B %d, %Y'))
+#    print(g)
+#    dev.off()
+# }
+# results <- do.call('rbind', results_list)
+# 
+# g <- ggplot(data = these_data,
+#             aes(x = date,
+#                 y = absenteeism_rate,
+#                 color = district)) +
+#   geom_point(alpha = 0.5) +
+#   theme_maltem() +
+#   geom_line(alpha = 0.2) +
+#   geom_smooth() +
+#   xlab('Date') +
+#   ylab('Absenteeism rate') +
+#   theme_maltem() +
+#   xlab('Date') +
+#   ylab('Absenteeism rate') +
+#   scale_color_manual(name = 'Location',
+#                      values = c('darkorange', 'darkgreen')) +
+#   geom_vline(xintercept = as.numeric(as.Date(c('2015-12-01',
+#                                                '2016-01-01'))),
+#              alpha = 0.6,
+#              lty = 2) +
+#   xlim(xl) +
+#   ylim(0, 30) +
+#   ggtitle(format(the_dates[i], format = '%B %d, %Y'))
+# print(g)
+# # Absenteeism over time
+# # GET THEME FOR GGPLOTS
+# source('theme.R')
+# 
+# cols <- c('darkorange', 'darkgreen')
+# 
+# temp <- 
+#   attendance %>%
+#   mutate(district = as.numeric(substr(combined_number, 1, 2)))%>%
+#   mutate(district = ifelse(district == 1, 'Manhiça', 
+#                            ifelse(district == 2, 'Magude', NA))) %>%
+#   group_by(date, district) %>%
+#   summarise(absences = length(which(absent)),
+#             eligibles = n()) %>%
+#   mutate(absenteeism_rate = absences / eligibles * 100) %>%
+#   rename(`Students under observation` = eligibles)
+# 
+# 
+# 
+# p <- ggplot(data = temp,
+#        aes(x = date,
+#            y = absenteeism_rate,
+#            color = district,
+#            frame = date)) +
+#   geom_point(alpha = 0.3,
+#              aes(size = `Students under observation`)) +
+#   geom_line(alpha = 0.3) +
+#   geom_smooth(aes(weight = `Students under observation`)) +
+#   scale_color_manual(name = 'District',
+#                      values = cols) +
+#   theme_maltem() +
+#   xlab('Date') +
+#   ylab('Absenteeism rate') +
+#   ggtitle('Smoothed absenteeism rate by district') +
+#   ylim(0,25) +
+#   geom_vline(xintercept = as.numeric(as.Date(c('2015-11-15', '2016-01-15'))), lty = 2, alpha = 0.6, color = 'darkred') +
+#   theme(legend.position = 'bottom')
+# gg_animate(p)

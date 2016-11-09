@@ -1,0 +1,171 @@
+---
+title: "MALTEM school map and distances from CISM"
+author: "Joe Brew, Laia Cirera, Elisa Sicuri"
+fig_width: 4
+output:
+  html_document:
+    theme: flatly
+    toc: yes
+    toc_float: yes
+  pdf_document:
+    toc: yes
+fig_height: 2.6
+---
+```{r, echo = FALSE, warning = FALSE, message = FALSE, comment = NA, error= FALSE, cache = FALSE}
+# No scientific notation
+options(scipen=999)
+
+# Packages 
+library(xtable)
+library(knitr)
+library(ggplot2) 
+# library(dplyr)
+library(rgeos)
+library(RColorBrewer)
+library(Rmisc)
+# Libraries
+library(rgdal)
+library(raster)
+library(sp)
+library(leaflet)
+library(ggmap)
+library(readxl)
+library(dplyr)
+library(readr)
+library(geosphere)
+
+# Basic knitr options
+opts_chunk$set(comment = NA, 
+               echo = FALSE, 
+               warning = FALSE, 
+               message = FALSE, 
+               error = TRUE, # Render report, even with errors
+               cache = F)
+```
+
+```{r setup, include=FALSE, echo = FALSE}
+library(knitr)
+knit_engines$set(asis = function(options) {
+  if (options$echo && options$eval) knit_child(text = options$code)
+})
+```
+
+
+```{r, results='hide'}
+# GET THEME FOR GGPLOTS
+source('theme.R')
+# READ IN DATA
+source('read_and_clean_all.R')
+
+# Combine manhica and magude
+combined_map <-
+  rbind(magude, manhica)
+
+# Fortify
+combined_map_fortified <-
+  fortify(combined_map, region = 'NAME_3')
+
+# Spatial versoin of schools
+schools <- ungroup(schools)
+schools_spatial <- schools
+schools_spatial$x <- schools_spatial$lng
+schools_spatial$y <- schools_spatial$lat
+schools_spatial <- schools_spatial[which(!is.na(schools_spatial$lat)),]
+coordinates(schools_spatial) <- ~x+y
+proj4string(schools_spatial) <- proj4string(moz)
+```
+
+# MAPS
+
+## Interactive map
+
+```{r}
+cols <- colorRampPalette(brewer.pal(n = 9, name = 'Spectral'))(2)
+colors <- ifelse(schools_spatial@data$district_number == '01', 
+                 cols[1],
+                 cols[2])
+leaflet(schools_spatial) %>%
+  # addProviderTiles('Esri.WorldImagery') %>%
+  addProviderTiles('Stamen.Toner') %>%
+  # addProviderTiles('Stamen.TonerLabels') %>%
+  addProviderTiles('Esri.NatGeoWorldMap') %>%
+  # fitBounds(lng1 = min(coordinates(combined_map)[,1]),
+  #           lat1 = min(coordinates(combined_map)[,2]),
+  #           lng2 = max(coordinates(combined_map)[,1]),
+  #           lat2 = max(coordinates(combined_map)[,2])) %>%
+  addCircleMarkers(#lng = schools$lng,
+             #lat = schools$lat,
+             popup = schools$SCHOOL_NAME,
+             col = colors,
+             opacity = 0,
+             fillOpacity = 0.7)
+  
+```
+
+## Static map
+
+```{r, fig.align='center', fig.height = 3}
+ggplot() +
+  coord_map() +
+    geom_polygon(data = combined_map_fortified,
+       aes(x = long, y =lat, group = group), 
+       fill = NA, 
+       color = 'black', 
+       alpha = 0.6) +
+  geom_point(data = schools_spatial@data,
+             aes(x = lng,
+                 y = lat),
+             color = colors) +
+  theme(axis.ticks.length = unit(0.001, "mm")) + labs(x=NULL, y=NULL) +
+  theme(axis.line=element_blank(),
+      axis.text.x=element_blank(),
+      axis.text.y=element_blank(),
+      axis.ticks=element_blank(),
+      axis.title.x=element_blank(),
+      axis.title.y=element_blank(),
+      # legend.position="none",
+      panel.background=element_blank(),
+      panel.border=element_blank(),
+      panel.grid.major=element_blank(),
+      panel.grid.minor=element_blank(),
+      plot.background=element_blank()) 
+```
+
+# Distances
+
+The below table shows the distance from the CISM to each school, using Haverstine's "great-cirlce-distance" (aka, "as the crow flies") in kilometers.
+
+As of November 9, 2016, the average liter of gasoline in Mozambique costs approximately 0.60 euros. With a "wear-and-tear" cost of approximately 0.20 euros per kilometer, a fuel efficiency of approximately 7 kilometers per liter, and a Haverstine inflation factor of 2 (ie, the true road distance is approximately twice the straight-line distance), we can calculate round trip transportation cost for each school.
+
+```{r}
+# Define cism location
+cism <- data.frame(name = 'CISM',
+                   x = 32.803869,
+                   y = -25.408462)
+cism$lng <- cism$x; cism$lat <- cism$y
+coordinates(cism) <- ~x+y
+proj4string(cism) <- proj4string(schools_spatial)
+distances <- geosphere::distm(x = cism,
+                              y = schools_spatial, 
+                              fun = distVincentySphere)
+distance_results <- data.frame(SCHOOL_NAME = schools_spatial@data$SCHOOL_NAME,
+                               distance = round(as.numeric(distances) / 1000, digits = 2))
+# Join to schools
+schools <- schools %>%
+  left_join(distance_results)
+
+schools$euros <- 
+  round(((schools$distance * 2) / 7) * (0.6 + 0.2), digits = 2)
+
+x <- schools %>% dplyr::select(SCHOOL_NAME, distance, euros, n_students, district_number)
+names(x) <- toupper(names(x))
+DT::datatable(x)
+```
+
+Note that in the above table, two schools are not listed. We do not have coordinates for these 2 schools:
+
+```{r}
+cat(paste0(schools$SCHOOL_NAME[is.na(schools$lat)], collapse = ' | '))
+```
+
+However, if we project the _average_ cost of the other schools onto these two, we come up with a total transportation cost for going to all 25 schools of `r round((25 * mean(schools$euros, na.rm = TRUE)), digits = 2)` euros.
